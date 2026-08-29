@@ -18,8 +18,9 @@ screener = importlib.import_module("borsa_isleri_src.screener")
 universe = importlib.import_module("borsa_isleri_src.universe")
 fetch = importlib.import_module("borsa_isleri_src.fetch")
 favorites = importlib.import_module("borsa_isleri_src.favorites")
+analysis = importlib.import_module("borsa_isleri_src.analysis")
 
 render_category_page(
-    "Nasdaq-100", universe.get_nasdaq100_symbols(), config, storage, screener, fetch, favorites,
+    "Nasdaq-100", universe.get_nasdaq100_symbols(), config, storage, screener, fetch, favorites, analysis,
     name_map=universe.get_nasdaq100_name_map(),
 )

@@ -7,6 +7,7 @@ import datetime as dt
 import time
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 # Aralık grupları (diğer finans platformlarındaki gibi: Dakika/Saat/Gün).
@@ -69,8 +70,6 @@ DISPLAY_COLUMNS = {
     "close": "Kapanış",
     "volume": "Hacim",
 }
-
-FAVORITE_COLUMN = "⭐ Favori"
 
 
 def rename_for_display(df: pd.DataFrame) -> pd.DataFrame:
@@ -149,16 +148,18 @@ def _matches_search(symbol: str, name_map: dict[str, str], query: str) -> bool:
     return q in symbol.casefold() or q in name_map.get(symbol, "").casefold()
 
 
-def render_favoritable_table(df: pd.DataFrame, name_map: dict[str, str], favorites, key_prefix: str) -> None:
-    """Arama kutusu + "⭐ Favori" sütunu olan, düzenlenebilir bir tablo çizer.
+def render_ranked_table(df: pd.DataFrame, name_map: dict[str, str], key_prefix: str) -> str | None:
+    """Arama kutusu + sıralı, salt-okunur, TIKLANABİLİR bir tablo çizer.
 
-    Favori işaretini değiştirmek `favorites.set_favorite(...)` ile anında
-    kalıcı hale gelir (data/favorites.json) ve sayfa hemen yenilenir — böylece
-    "Hisselerim" bölümü de anında güncellenir.
+    Bir satıra tıklanınca o satırın sembolünü döner (tıklama yoksa None) —
+    çağıran taraf bunu "Sembol İncele / Ayrıntılı Analiz" panelini o sembole
+    çevirmek için kullanır. Favori işaretleme burada değil, detay panelinde
+    yapılır (aynı tabloda hem tıkla-seç hem düzenlenebilir kutucuk sağlıklı
+    çalışmıyor).
     """
     if df.empty:
         st.dataframe(rename_for_display(df), use_container_width=True, hide_index=True)
-        return
+        return None
 
     df = df if "sirket_adi" in df.columns else add_name_column(df, name_map)
     df = df.reset_index(drop=True)
@@ -172,74 +173,141 @@ def render_favoritable_table(df: pd.DataFrame, name_map: dict[str, str], favorit
 
     if df.empty:
         st.caption("Arama sonucunda sembol bulunamadı.")
-        return
+        return None
 
-    current_favorites = favorites.load_favorites()
-    df.insert(0, "favori", df["symbol"].isin(current_favorites))
+    display_df = df.copy()
+    if "aday_mi" in display_df.columns:
+        # Bilgi amaçlı, salt-okunur bir sonuç sütunu — boolean bırakırsak
+        # Streamlit checkbox gibi gösteriyor, tıklanabilir satırla karışmasın
+        # diye düz metne çeviriyoruz.
+        display_df["aday_mi"] = display_df["aday_mi"].map({True: "✅ Evet", False: "—"})
+    display_df = rename_for_display(display_df)
 
-    if "aday_mi" in df.columns:
-        # Bilgi amaçlı, salt-okunur bir sonuç sütunu — boolean olarak
-        # bırakırsak Streamlit onu da tıklanabilir bir kutucuk gibi
-        # gösteriyor ve "⭐ Favori" ile karışıyor. Düz metne çeviriyoruz.
-        df["aday_mi"] = df["aday_mi"].map({True: "✅ Evet", False: "—"})
-
-    display_df = rename_for_display(df).rename(columns={"favori": FAVORITE_COLUMN})
-    other_columns = [c for c in display_df.columns if c != FAVORITE_COLUMN]
-
-    edited = st.data_editor(
+    st.caption("👆 Ayrıntılı analiz için bir satıra tıkla.")
+    event = st.dataframe(
         display_df,
         use_container_width=True,
         hide_index=True,
-        disabled=other_columns,
-        key=f"editor_{key_prefix}",
+        on_select="rerun",
+        selection_mode="single-row",
+        key=f"table_{key_prefix}",
     )
 
-    changed = False
-    for i in range(len(df)):
-        symbol = df.loc[i, "symbol"]
-        row_category = df.loc[i, "kategori"] if "kategori" in df.columns else ""
-        old_val = symbol in current_favorites
-        new_val = bool(edited.loc[i, FAVORITE_COLUMN])
-        if old_val != new_val:
-            favorites.set_favorite(symbol, row_category, new_val)
-            changed = True
-
-    if changed:
-        st.rerun()
+    selected_rows = event.selection.rows if event and event.selection else []
+    if selected_rows:
+        return df.loc[selected_rows[0], "symbol"]
+    return None
 
 
-def render_favorites_section(
-    available: list[str], name_map: dict[str, str], storage, favorites, category_label: str
+def _build_price_figure(df: pd.DataFrame, tech: dict | None) -> go.Figure:
+    """Kapanış fiyatı çizgisi + (varsa) destek/direnç/Fibonacci referans
+    çizgileriyle bir Plotly grafiği kurar.
+    """
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=df["date"], y=df["close"], mode="lines", name="Kapanış", line=dict(color="#2563eb", width=2))
+    )
+
+    if tech:
+        for lvl in tech.get("support_levels", []):
+            fig.add_hline(
+                y=lvl, line_dash="dot", line_color="#16a34a",
+                annotation_text=f"Destek {lvl:.2f}", annotation_position="bottom right",
+            )
+        for lvl in tech.get("resistance_levels", []):
+            fig.add_hline(
+                y=lvl, line_dash="dot", line_color="#dc2626",
+                annotation_text=f"Direnç {lvl:.2f}", annotation_position="top right",
+            )
+        for label, lvl in (tech.get("fibonacci_levels") or {}).items():
+            fig.add_hline(
+                y=lvl, line_dash="dash", line_color="#a855f7", opacity=0.35,
+                annotation_text=f"Fib {label}", annotation_position="left",
+            )
+
+    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=440, showlegend=False)
+    return fig
+
+
+def render_symbol_detail(
+    symbol: str,
+    category_label: str,
+    name_map: dict[str, str],
+    storage,
+    fetch,
+    favorites,
+    analysis,
+    key_prefix: str,
 ) -> None:
-    """Bu kategorideki favori (⭐ işaretlenmiş) sembolleri, güncel fiyatlarıyla gösterir."""
-    st.subheader("⭐ Hisselerim (bu kategori)")
+    """Tek bir sembol için: favori aç/kapa, aralık seçici + grafik (destek/
+    direnç/Fibonacci işaretli), ve yazılı teknik analiz yorumu.
+    """
+    display_name = name_map.get(symbol, "")
+    st.markdown(f"#### {symbol}" + (f" — {display_name}" if display_name else ""))
 
     current_favorites = favorites.load_favorites()
-    fav_symbols = [s for s in available if s in current_favorites]
+    is_fav = symbol in current_favorites
 
-    if not fav_symbols:
-        st.caption(
-            "Henüz bu kategoriden favori eklemedin — yukarıdaki tablolarda "
-            f"{FAVORITE_COLUMN} kutucuğunu işaretleyerek ekleyebilirsin."
+    col_fav, col_group, col_value, col_refresh = st.columns([1.3, 1.3, 1.5, 1])
+    with col_fav:
+        new_fav = st.checkbox("⭐ Favorilerde", value=is_fav, key=f"favtoggle_{key_prefix}_{symbol}")
+        if new_fav != is_fav:
+            favorites.set_favorite(symbol, category_label, new_fav)
+            st.rerun()
+    with col_group:
+        group = st.radio("Grup", options=list(INTERVAL_GROUPS.keys()), horizontal=True, key=f"group_{key_prefix}")
+    with col_value:
+        label = st.selectbox("Aralık", options=list(INTERVAL_GROUPS[group].keys()), key=f"interval_{group}_{key_prefix}")
+    with col_refresh:
+        st.write("")
+        if st.button("🔄 Şimdi Yenile", key=f"refresh_{key_prefix}"):
+            _fetch_live.clear()
+
+    conn = storage.get_connection()
+    with st.spinner("Veri hazırlanıyor..."):
+        df, fetched_at = _load_chart_data(symbol, group, label, storage, fetch, conn)
+
+    if df.empty:
+        conn.close()
+        st.info(
+            "Bu sembol/aralık için veri bulunamadı (Yahoo Finance bu aralıkta "
+            "veri sunmuyor olabilir — özellikle dakikalık veriler için işlem "
+            "saatleri dışında veya çok yeni/az işlem gören semboller)."
         )
         return
 
-    conn = storage.get_connection()
-    rows = []
-    for symbol in fav_symbols:
-        price_df = storage.read_prices(conn, symbol)
-        if price_df.empty:
-            continue
-        rows.append(
-            {
-                "symbol": symbol,
-                "kategori": current_favorites.get(symbol, category_label),
-                "current_price": float(price_df.iloc[-1]["close"]),
-            }
-        )
+    if fetched_at is not None:
+        st.caption(f"⏱ Bu grafik canlı çekildi: {dt.datetime.fromtimestamp(fetched_at).strftime('%H:%M:%S')}")
+
+    is_try = symbol.endswith(".IS")
+    usdtry_df = storage.read_prices(conn, "USDTRY=X") if is_try else None
+    tech = analysis.analyze_symbol(df, is_try_denominated=is_try, usdtry_df=usdtry_df)
     conn.close()
 
-    render_favoritable_table(pd.DataFrame(rows), name_map, favorites, key_prefix=f"hisselerim_{category_label}")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.subheader(f"Kapanış Fiyatı ({label})")
+        st.plotly_chart(_build_price_figure(df, tech), use_container_width=True, key=f"chart_{key_prefix}")
+    with col2:
+        last_row = df.iloc[-1]
+        st.metric("Son Kapanış", f"{last_row['close']:.2f}")
+        if len(df) > 1:
+            prev_close = df.iloc[-2]["close"]
+            change_pct = (last_row["close"] - prev_close) / prev_close * 100
+            st.metric("Değişim (son bar)", f"{change_pct:+.2f}%")
+
+    st.subheader("Teknik Analiz Yorumu")
+    if tech:
+        st.info(tech["yorum"])
+    else:
+        st.caption("Ayrıntılı teknik analiz için yeterli geçmiş veri yok (en az ~30 gün gerekir).")
+
+    st.subheader("Veri Tablosu")
+    st.dataframe(
+        rename_for_display(df.sort_values("date", ascending=False)),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def render_last_update_banner(storage) -> None:
@@ -257,7 +325,7 @@ def render_last_update_banner(storage) -> None:
 
 
 def render_category_page(
-    title: str, symbols: list[str], config, storage, screener, fetch, favorites, name_map: dict | None = None
+    title: str, symbols: list[str], config, storage, screener, fetch, favorites, analysis, name_map: dict | None = None
 ) -> None:
     st.title(title)
     render_last_update_banner(storage)
@@ -267,23 +335,55 @@ def render_category_page(
     conn = storage.get_connection()
     db_symbols = set(storage.all_symbols_in_db(conn))
     available = [s for s in symbols if s in db_symbols]
+    conn.close()
 
     if not available:
-        conn.close()
         st.warning(
             "Bu kategori için veritabanında henüz veri yok. Önce şunu çalıştır:\n\n"
             "`borsa-isleri\\.venv\\Scripts\\python.exe borsa-isleri\\scripts\\run_fetch.py`"
         )
         return
 
-    render_favorites_section(available, name_map, storage, favorites, title)
+    session_key = f"selected_symbol_{title}"
+    if session_key not in st.session_state or st.session_state[session_key] not in available:
+        st.session_state[session_key] = available[0]
 
+    # --- Hisselerim ---
+    st.subheader("⭐ Hisselerim (bu kategori)")
+    current_favorites = favorites.load_favorites()
+    fav_symbols = [s for s in available if s in current_favorites]
+    if not fav_symbols:
+        st.caption(
+            "Henüz bu kategoriden favori eklemedin — bir sembolün ayrıntılı "
+            "analiz panelinden ⭐ Favorilerde kutucuğunu işaretleyerek ekleyebilirsin."
+        )
+    else:
+        conn = storage.get_connection()
+        rows = []
+        for symbol in fav_symbols:
+            price_df = storage.read_prices(conn, symbol)
+            if price_df.empty:
+                continue
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "kategori": current_favorites.get(symbol, title),
+                    "current_price": float(price_df.iloc[-1]["close"]),
+                }
+            )
+        conn.close()
+        clicked = render_ranked_table(pd.DataFrame(rows), name_map, key_prefix=f"hisselerim_{title}")
+        if clicked:
+            st.session_state[session_key] = clicked
+
+    # --- Fırsat Taraması ---
     st.subheader("Fırsat Taraması (bu kategori)")
     st.caption(
         "Uzun süredir ucuz (52 haftalık dibe yakın) VE yatayda kalmış "
-        "sembolleri işaretler. Yatırım tavsiyesi değildir — inceleyip karar "
-        "sana ait."
+        "sembolleri işaretler. Sıra, TÜM sembolleri en avantajlıdan en "
+        "avantajsıza sıralar. Yatırım tavsiyesi değildir."
     )
+    conn = storage.get_connection()
     pairs = [(s, title) for s in available]
     result = screener.screen_symbols(pairs, storage, conn)
     if result.empty:
@@ -291,8 +391,11 @@ def render_category_page(
     else:
         candidate_count = int(result["aday_mi"].sum())
         st.caption(f"{len(result)} sembol tarandı, {candidate_count} aday bulundu.")
-        render_favoritable_table(result, name_map, favorites, key_prefix=f"price_{title}")
+        clicked = render_ranked_table(result, name_map, key_prefix=f"price_{title}")
+        if clicked:
+            st.session_state[session_key] = clicked
 
+    # --- Grafik Fırsatı ---
     st.subheader("Grafik Fırsatı (bu kategori)")
     st.caption(
         "Temel verilerden (defter değeri vb.) bağımsız, sadece fiyat grafiğine "
@@ -302,61 +405,24 @@ def render_category_page(
         "tavsiyesi değildir."
     )
     chart_result = screener.screen_chart_opportunities(pairs, storage, conn)
+    conn.close()
     if chart_result.empty:
         st.info("Yeterli geçmiş veri olan sembol bulunamadı (en az ~2 yıllık veri önerilir).")
     else:
         chart_candidate_count = int(chart_result["aday_mi"].sum())
         st.caption(f"{len(chart_result)} sembol tarandı, {chart_candidate_count} aday bulundu.")
-        render_favoritable_table(chart_result, name_map, favorites, key_prefix=f"chart_{title}")
+        clicked = render_ranked_table(chart_result, name_map, key_prefix=f"chart_{title}")
+        if clicked:
+            st.session_state[session_key] = clicked
 
-    st.subheader("Sembol İncele")
-    col_sym, col_group, col_value, col_refresh = st.columns([2, 1.3, 1.5, 1])
-    with col_sym:
-        selected_symbol = st.selectbox(
-            "Sembol",
-            options=available,
-            format_func=lambda s: f"{s} — {name_map.get(s, '')}" if name_map.get(s) else s,
-            key=f"select_{title}",
-        )
-    with col_group:
-        group = st.radio("Grup", options=list(INTERVAL_GROUPS.keys()), horizontal=True, key=f"group_{title}")
-    with col_value:
-        label = st.selectbox("Aralık", options=list(INTERVAL_GROUPS[group].keys()), key=f"interval_{group}_{title}")
-    with col_refresh:
-        st.write("")
-        if st.button("🔄 Şimdi Yenile", key=f"refresh_{title}"):
-            _fetch_live.clear()
-
-    with st.spinner("Veri hazırlanıyor..."):
-        df, fetched_at = _load_chart_data(selected_symbol, group, label, storage, fetch, conn)
-    conn.close()
-
-    if df.empty:
-        st.info(
-            "Bu sembol/aralık için veri bulunamadı (Yahoo Finance bu aralıkta "
-            "veri sunmuyor olabilir — özellikle dakikalık veriler için işlem "
-            "saatleri dışında veya çok yeni/az işlem gören semboller)."
-        )
-        return
-
-    if fetched_at is not None:
-        st.caption(f"⏱ Bu grafik canlı çekildi: {dt.datetime.fromtimestamp(fetched_at).strftime('%H:%M:%S')}")
-
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.subheader(f"{selected_symbol} — Kapanış Fiyatı ({label})")
-        st.line_chart(df.set_index("date")["close"])
-    with col2:
-        last_row = df.iloc[-1]
-        st.metric("Son Kapanış", f"{last_row['close']:.2f}")
-        if len(df) > 1:
-            prev_close = df.iloc[-2]["close"]
-            change_pct = (last_row["close"] - prev_close) / prev_close * 100
-            st.metric("Değişim (son bar)", f"{change_pct:+.2f}%")
-
-    st.subheader("Veri Tablosu")
-    st.dataframe(
-        rename_for_display(df.sort_values("date", ascending=False)),
-        use_container_width=True,
-        hide_index=True,
+    # --- Sembol İncele / Ayrıntılı Analiz ---
+    st.subheader("Sembol İncele / Ayrıntılı Analiz")
+    st.caption("Yukarıdaki tablolardan bir satıra tıkla, ya da doğrudan buradan sembol seç.")
+    manual_choice = st.selectbox(
+        "Sembol",
+        options=available,
+        format_func=lambda s: f"{s} — {name_map.get(s, '')}" if name_map.get(s) else s,
+        key=session_key,
     )
+
+    render_symbol_detail(manual_choice, title, name_map, storage, fetch, favorites, analysis, key_prefix=f"detail_{title}")

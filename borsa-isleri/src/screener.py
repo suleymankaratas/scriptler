@@ -76,13 +76,24 @@ def compute_symbol_metrics(df: pd.DataFrame, settings: dict | None = None) -> di
         and settings["rsi_min"] <= rsi_value <= settings["rsi_max"]
     )
 
-    aciklama = ""
+    # Her sembol için (aday olsun olmasın) betimleyici bir yorum üretilir —
+    # dibe/zirveye uzaklık, yatay/oynak olup olmadığı, RSI bölgesi.
+    yakinlik = "yakın" if pct_from_low <= settings["near_low_threshold_pct"] else "uzak"
+    bant_durumu = "dar/yatay" if sideways_range_pct <= settings["sideways_threshold_pct"] else "geniş/oynak"
+    if rsi_value < settings["rsi_min"]:
+        rsi_durumu = "aşırı satım bölgesinde"
+    elif rsi_value > settings["rsi_max"]:
+        rsi_durumu = "aşırı alım bölgesinde"
+    else:
+        rsi_durumu = "nötr bölgede"
+
+    aciklama = (
+        f"52 haftalık dibin %{pct_from_low:.1f} üzerinde ({yakinlik}, zirveden %{abs(pct_from_high):.0f} geride), "
+        f"son ~{sideways_window} günde %{sideways_range_pct:.1f} bandında ({bant_durumu}) seyrediyor, "
+        f"RSI {rsi_value:.0f} ({rsi_durumu})."
+    )
     if is_candidate:
-        aciklama = (
-            f"52 haftalık dibin sadece %{pct_from_low:.1f} üzerinde (zirveden %{abs(pct_from_high):.0f} geride), "
-            f"son ~{sideways_window} günde %{sideways_range_pct:.1f} bandında yatay seyrediyor, "
-            f"RSI {rsi_value:.0f} (nötr/aşırı satım bölgesinde)."
-        )
+        aciklama += " → Fırsat kriterlerinin hepsini karşılıyor."
 
     return {
         "current_price": current_price,
@@ -124,14 +135,11 @@ def screen_symbols(symbol_category_pairs: list[tuple[str, str]], storage_module,
     # "Fırsat skoru": düşük olması daha avantajlı demek (dibe daha yakın,
     # daha dar/yatay bant, daha nötr/düşük RSI). Sadece sıralama ve "Sıra"
     # numarası için kullanılır, ekranda ayrı bir sütun olarak gösterilmez.
+    # TÜM semboller (aday olsun olmasın) bu skora göre en avantajlıdan en
+    # avantajsıza sıralanır — "aday_mi" ayrı, sabit bir eşik bilgisidir.
     score = result["pct_from_52w_low"] + result["sideways_range_pct"] + result["rsi"]
-    result = result.assign(_skor=score).sort_values(
-        ["aday_mi", "_skor"], ascending=[False, True]
-    ).drop(columns="_skor").reset_index(drop=True)
-
-    result.insert(0, "sira", pd.NA)
-    candidate_mask = result["aday_mi"]
-    result.loc[candidate_mask, "sira"] = range(1, int(candidate_mask.sum()) + 1)
+    result = result.assign(_skor=score).sort_values("_skor", ascending=True).drop(columns="_skor").reset_index(drop=True)
+    result.insert(0, "sira", range(1, len(result) + 1))
     return result
 
 
@@ -203,16 +211,23 @@ def compute_chart_opportunity(
 
     is_candidate = returned_to_old_price and has_major_decline and is_sideways
 
-    aciklama = ""
+    # Her sembol için (aday olsun olmasın) betimleyici bir yorum üretilir.
+    vs_parcalari = [
+        f"{label} önceye göre %{pct:+.1f}" for label, pct in pct_vs_past.items() if pct is not None
+    ]
+    vs_ozeti = ", ".join(vs_parcalari) if vs_parcalari else "yeterli geçmiş veri yok"
+    bant_durumu = "dar/yatay" if is_sideways else "geniş/oynak"
+    dusus_durumu = "ciddi bir düşüş yaşamış" if has_major_decline else "zirveden belirgin uzaklaşmamış"
+
+    aciklama = (
+        f"Dolar bazlı fiyat: {vs_ozeti}. Zirveden %{abs(drawdown_from_peak_pct):.0f} geride "
+        f"({dusus_durumu}), son ~{sideways_window} günde %{sideways_range_pct:.1f} bandında ({bant_durumu}) "
+        "(temel veriden bağımsız, sadece fiyat grafiğine bakılmıştır)."
+    )
     if is_candidate:
         seviye_parcalari = [label for label, near in near_past.items() if near]
         seviyeler = " ve ".join(seviye_parcalari)
-        aciklama = (
-            f"Dolar bazlı fiyat {seviyeler} önceki seviyesine gerilemiş, "
-            f"zirveden %{abs(drawdown_from_peak_pct):.0f} geride ve "
-            f"son ~{sideways_window} günde %{sideways_range_pct:.1f} bandında yatay seyrediyor "
-            "(temel veriden bağımsız, sadece fiyat grafiğine bakılmıştır)."
-        )
+        aciklama += f" → {seviyeler} önceki seviyeye dönüş + ciddi düşüş + yatay: fırsat kriterlerinin hepsini karşılıyor."
 
     result = {
         "current_price_usd": round(current_price, 2),
@@ -257,14 +272,10 @@ def screen_chart_opportunities(
     result = pd.DataFrame(rows)
 
     # "Fırsat skoru": düşük olması daha avantajlı demek (eski fiyat seviyesine
-    # daha tam gelmiş VE daha dar/yatay bant). Sadece sıralama için kullanılır.
+    # daha tam gelmiş VE daha dar/yatay bant). TÜM semboller bu skora göre
+    # sıralanır — "aday_mi" ayrı, sabit bir eşik bilgisidir.
     proximity = result[["vs_2 yıl", "vs_5 yıl"]].apply(pd.to_numeric, errors="coerce").abs().min(axis=1, skipna=True)
     score = result["sideways_range_pct"] + proximity.fillna(proximity.max() if proximity.notna().any() else 0)
-    result = result.assign(_skor=score).sort_values(
-        ["aday_mi", "_skor"], ascending=[False, True]
-    ).drop(columns="_skor").reset_index(drop=True)
-
-    result.insert(0, "sira", pd.NA)
-    candidate_mask = result["aday_mi"]
-    result.loc[candidate_mask, "sira"] = range(1, int(candidate_mask.sum()) + 1)
+    result = result.assign(_skor=score).sort_values("_skor", ascending=True).drop(columns="_skor").reset_index(drop=True)
+    result.insert(0, "sira", range(1, len(result) + 1))
     return result

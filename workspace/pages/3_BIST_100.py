@@ -17,5 +17,6 @@ storage = importlib.import_module("borsa_isleri_src.storage")
 screener = importlib.import_module("borsa_isleri_src.screener")
 fetch = importlib.import_module("borsa_isleri_src.fetch")
 favorites = importlib.import_module("borsa_isleri_src.favorites")
+analysis = importlib.import_module("borsa_isleri_src.analysis")
 
-render_category_page("BIST 100", config.TICKERS["bist100"], config, storage, screener, fetch, favorites)
+render_category_page("BIST 100", config.TICKERS["bist100"], config, storage, screener, fetch, favorites, analysis)
