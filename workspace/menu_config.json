@@ -1,19 +1,31 @@
 {
   "items": [
     {
-      "type": "page",
-      "id": "borsa_takip",
-      "title": "Borsa Takip",
-      "page_file": "pages/1_Borsa_Takip.py",
-      "parent_id": null,
-      "hidden": false
+      "type": "folder",
+      "id": "kurum-i-leri",
+      "title": "kurum işleri",
+      "parent_id": null
     },
     {
       "type": "page",
       "id": "router_ariza_kontrol",
       "title": "Router Arıza Kontrol",
       "page_file": "pages/2_Router_Ariza_Kontrol.py",
-      "parent_id": null,
+      "parent_id": "kurum-i-leri",
+      "hidden": false
+    },
+    {
+      "type": "folder",
+      "id": "borsa",
+      "title": "borsa",
+      "parent_id": null
+    },
+    {
+      "type": "page",
+      "id": "borsa_takip",
+      "title": "Borsa Takip",
+      "page_file": "pages/1_Borsa_Takip.py",
+      "parent_id": "borsa",
       "hidden": false
     }
   ]
