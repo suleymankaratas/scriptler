@@ -28,15 +28,22 @@ pip install -r requirements.txt
    ```
 3. Dashboard'u aç:
    ```powershell
-   streamlit run src/dashboard.py
+   streamlit run src/Home.py
    ```
+
+Bu, çok sayfalı (multi-page) bir Streamlit uygulaması — sol menüden sayfalar
+arası geçilir. Yeni bir iş/araç eklemek istediğinde `src/pages/` klasörüne
+yeni bir `.py` dosyası eklemen yeterli, Streamlit onu otomatik olarak menüye
+ekler (dosya adının başındaki sayı sıralamayı belirler, örn. `2_Yeni_Arac.py`).
 
 ## Proje Yapısı
 
 - `src/config.py` — takip listesi ve ayarlar
 - `src/fetch.py` — yfinance ile veri çekme
 - `src/storage.py` — SQLite okuma/yazma
-- `src/dashboard.py` — Streamlit arayüzü
+- `src/Home.py` — çok sayfalı uygulamanın giriş noktası
+- `src/pages/1_Borsa_Takip.py` — borsa takip sayfası (ileride başka işler için
+  yeni sayfalar buraya eklenecek)
 - `scripts/run_fetch.py` — manuel veri çekme script'i
 - `data/market_data.db` — SQLite veritabanı (git'e dahil değil)
 

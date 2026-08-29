@@ -1,22 +1,17 @@
-"""Streamlit dashboard: SQLite'taki fiyat verisini tablo + grafik olarak gösterir.
-
-Çalıştırmak için proje kökünden:
-    streamlit run src/dashboard.py
-"""
+"""Streamlit sayfası: SQLite'taki fiyat verisini tablo + grafik olarak gösterir."""
 
 import sys
 from pathlib import Path
 
 # Proje kökünü sys.path'e ekle ki "src" paketi import edilebilsin.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import streamlit as st
 
 from src.config import TICKERS
 from src.storage import all_symbols_in_db, get_connection, read_prices
 
-st.set_page_config(page_title="Borsa Takip", layout="wide")
-st.title("Borsa / Piyasa Takip Dashboard")
+st.title("Borsa / Piyasa Takip")
 
 conn = get_connection()
 available_symbols = all_symbols_in_db(conn)
