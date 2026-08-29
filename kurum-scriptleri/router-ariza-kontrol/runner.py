@@ -10,8 +10,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from checks import CHECKS
-from config import LOG_PATH, ROUTERS
+try:
+    # Bu modül bir paketin parçası olarak (örn. merkezi workspace menüsünden)
+    # yüklendiğinde, isim çakışmasını önlemek için göreli import kullanılır.
+    from .checks import CHECKS
+    from .config import LOG_PATH, ROUTERS
+except ImportError:
+    # Tek başına çalıştırıldığında (örn. check_routers.py üzerinden) paket
+    # bağlamı olmadığı için düz import'a düşer.
+    from checks import CHECKS
+    from config import LOG_PATH, ROUTERS
 
 
 def setup_logging() -> None:

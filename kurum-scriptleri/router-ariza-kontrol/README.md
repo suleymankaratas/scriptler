@@ -2,6 +2,10 @@
 
 Kurumdaki router'ların erişilebilirliğini kontrol eden araç.
 
+> Bu proje artık ana `workspace/` menüsünden ("Router Arıza Kontrol" sayfası)
+> çalışıyor — bkz. kök [README.md](../../README.md). Aşağıdaki adımlar bu
+> projeyi tek başına (bağımsız) çalıştırmak içindir.
+
 **Durum:** İskelet/arayüz hazır, gerçek kontrol mantığı (ping'in ötesinde
 port/SNMP kontrolleri vb.) başka bir bilgisayarda hazırlanıyor ve
 buraya eklenecek. Şu an sadece basit bir ping kontrolü çalışır durumda —

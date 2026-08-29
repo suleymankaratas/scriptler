@@ -4,6 +4,10 @@ BIST hisseleri, döviz/emtia, kripto ve global hisseleri tek yerden takip edip
 analiz etmek için kişisel bir proje. Local MVP: veri çekme + SQLite + Streamlit
 dashboard.
 
+> Bu proje artık ana `workspace/` menüsünden ("Borsa Takip" sayfası) çalışıyor
+> — bkz. kök [README.md](../README.md). Aşağıdaki adımlar bu projeyi tek başına
+> (bağımsız) çalıştırmak içindir.
+
 Veri kaynağı olarak [yfinance](https://github.com/ranaroussi/yfinance)
 kullanılıyor (ücretsiz, API key gerektirmez). investing.com ve TradingView'ın
 resmi/bireysel kullanıcılar için veri-çekme API'si olmadığından ve

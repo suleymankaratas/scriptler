@@ -1,11 +1,17 @@
 """SQLite depolama yardımcıları: tablo oluşturma ve upsert."""
 
 import sqlite3
-from pathlib import Path
 
 import pandas as pd
 
-from src.config import DB_PATH
+try:
+    # Bir paketin parçası olarak (örn. merkezi workspace menüsünden) yüklendiğinde
+    # isim çakışmasını önlemek için göreli import kullanılır.
+    from .config import DB_PATH
+except ImportError:
+    # Tek başına çalıştırıldığında (scripts/run_fetch.py, src/pages/... üzerinden)
+    # paket bağlamı olmadığı için düz import'a düşer.
+    from src.config import DB_PATH
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS prices (
