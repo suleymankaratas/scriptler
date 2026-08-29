@@ -1,4 +1,5 @@
 **/data/*.db
+**/data/universe_*.json
 **/.venv/
 **/venv/
 **/__pycache__/

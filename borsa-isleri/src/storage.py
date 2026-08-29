@@ -57,7 +57,14 @@ def upsert_prices(conn: sqlite3.Connection, symbol: str, df: pd.DataFrame) -> in
             float(row["Volume"]),
         )
         for index, row in df.iterrows()
+        # Savunma katmanı: farklı piyasa takvimlerinin hizalanmasından doğan
+        # NaN kapanışlı satırlar asla DB'ye yazılmasın (bkz. fetch.py'deki
+        # fetch_many_bulk açıklaması).
+        if pd.notna(row["Close"])
     ]
+
+    if not rows:
+        return 0
 
     conn.executemany(
         """
