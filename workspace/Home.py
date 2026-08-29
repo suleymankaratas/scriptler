@@ -2,7 +2,9 @@
 
 Bu, tüm projelerin (borsa-isleri, kurum-scriptleri/... ve ilerideki yenileri)
 tek bir Streamlit uygulaması içinde, sol menüden erişilebildiği merkezi
-arayüzdür.
+arayüzdür. Menünün klasör/sıra yapısı `menu_config.json` içinde tutulur ve
+sol menüdeki "Menü Yönetimi" sayfasından düzenlenir (yeni klasör, taşıma,
+sıralama, menüden kaldırma).
 
 Çalıştırmak için proje kökünden (scriptler/):
     workspace\\.venv\\Scripts\\python.exe -m streamlit run workspace\\Home.py
@@ -12,13 +14,12 @@ Yeni bir proje eklemek için `project_loader.py` içindeki talimatlara bak.
 
 import streamlit as st
 
+from menu_store import build_navigation, load_items
+
 st.set_page_config(page_title="Çalışma Ortamı", layout="wide")
 
-st.title("Çalışma Ortamı")
-st.write("Sol menüden mevcut projeler arasında geçiş yapabilirsin.")
+items = load_items()
+nav = build_navigation(items)
 
-st.subheader("Mevcut Projeler")
-st.markdown(
-    "- **Borsa Takip** — BIST/döviz-emtia/kripto/global piyasa verisi ve grafik\n"
-    "- **Router Arıza Kontrol** — kurum router'larının erişilebilirlik kontrolü"
-)
+pg = st.navigation(nav)
+pg.run()
