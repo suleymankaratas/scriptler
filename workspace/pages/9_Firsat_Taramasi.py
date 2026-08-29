@@ -17,6 +17,7 @@ ROOT_DIR = WORKSPACE_DIR.parent
 
 sys.path.insert(0, str(WORKSPACE_DIR))
 from project_loader import load_project_package  # noqa: E402
+from borsa_category_view import add_name_column, render_last_update_banner, rename_for_display  # noqa: E402
 
 load_project_package("borsa_isleri_src", ROOT_DIR / "borsa-isleri" / "src")
 config = importlib.import_module("borsa_isleri_src.config")
@@ -25,11 +26,16 @@ screener = importlib.import_module("borsa_isleri_src.screener")
 universe = importlib.import_module("borsa_isleri_src.universe")
 
 st.title("Fırsat Taraması")
+render_last_update_banner(storage)
 st.caption(
     "Uzun süredir ucuz (52 haftalık dibe yakın) VE yatayda kalmış sembolleri "
     "tüm kategorilerde tarar. **Yatırım tavsiyesi değildir** — adayları "
     "inceleyip kararı sen verirsin."
 )
+
+name_map: dict[str, str] = dict(config.SYMBOL_NAMES)
+name_map.update(universe.get_nasdaq100_name_map())
+name_map.update(universe.get_snp500_name_map())
 
 CATEGORY_LABELS = {
     "bist100": "BIST 100",
@@ -88,4 +94,5 @@ if only_candidates:
 if category_filter:
     filtered = filtered[filtered["kategori"].isin(category_filter)]
 
-st.dataframe(filtered, use_container_width=True, hide_index=True)
+filtered = add_name_column(filtered, name_map)
+st.dataframe(rename_for_display(filtered), use_container_width=True, hide_index=True)

@@ -18,4 +18,7 @@ screener = importlib.import_module("borsa_isleri_src.screener")
 universe = importlib.import_module("borsa_isleri_src.universe")
 fetch = importlib.import_module("borsa_isleri_src.fetch")
 
-render_category_page("S&P 500", universe.get_snp500_symbols(), config, storage, screener, fetch)
+render_category_page(
+    "S&P 500", universe.get_snp500_symbols(), config, storage, screener, fetch,
+    name_map=universe.get_snp500_name_map(),
+)

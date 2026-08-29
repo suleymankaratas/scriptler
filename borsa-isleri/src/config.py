@@ -24,39 +24,82 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "market_data.db"
 UNIVERSE_CACHE_DIR = BASE_DIR / "data"
 
-# BIST 100 (yaklaşık/makul liste — bkz. yukarıdaki not). ".IS" son eki
-# aşağıda otomatik ekleniyor.
+# BIST 100 (yaklaşık/makul liste — bkz. yukarıdaki not): (kod, şirket adı).
+# ".IS" son eki aşağıda otomatik ekleniyor.
 _BIST100_RAW = [
-    "THYAO", "GARAN", "AKBNK", "ISCTR", "YKBNK", "VAKBN", "HALKB", "TSKB",
-    "SAHOL", "KCHOL", "SISE", "EREGL", "TUPRS", "PETKM", "ASELS", "TOASO",
-    "FROTO", "OTKAR", "KARSN", "TTKOM", "TCELL", "ARCLK", "VESTL", "BIMAS",
-    "MGROS", "SOKM", "ULKER", "CCOLA", "AEFES", "TATGD", "PGSUS", "TAVHL",
-    "DOAS", "CIMSA", "AKCNS", "ENKAI", "TKFEN", "GUBRF",
-    "AGHOL", "ALARK", "ZOREN", "AKSEN", "AKSA", "KONTR", "ASTOR", "SASA",
-    "BRSAN", "BRYAT", "EGEEN", "HEKTS", "TRGYO", "EKGYO", "ISGYO", "KRDMD",
-    "ISDMR", "DOHOL", "LOGO", "NETAS", "MAVI", "MPARK", "ECILC", "DEVA",
-    "SELEC", "TMSN", "YATAS", "ANHYT", "ANSGR", "AGESA", "TURSG", "GESAN",
-    "ALFAS", "SMRTG", "ODAS", "AYDEM", "NTHOL", "CLEBI", "VESBE", "PENTA",
-    "SDTTR", "ISMEN", "KLGYO", "GLYHO", "BASGZ", "AKGRT", "SUWEN", "KARTN",
-    "BANVT", "BFREN", "CEMTS", "BURCE", "DGATE", "KAREL", "INDES", "ALCTL",
-    "ISFIN", "PSGYO",
+    ("THYAO", "Türk Hava Yolları"), ("GARAN", "Garanti BBVA"), ("AKBNK", "Akbank"),
+    ("ISCTR", "Türkiye İş Bankası (C)"), ("YKBNK", "Yapı Kredi Bankası"),
+    ("VAKBN", "VakıfBank"), ("HALKB", "Halkbank"), ("TSKB", "TSKB"),
+    ("SAHOL", "Sabancı Holding"), ("KCHOL", "Koç Holding"),
+    ("SISE", "Şişecam"), ("EREGL", "Ereğli Demir Çelik"), ("TUPRS", "Tüpraş"),
+    ("PETKM", "Petkim"), ("ASELS", "Aselsan"), ("TOASO", "Tofaş"),
+    ("FROTO", "Ford Otosan"), ("OTKAR", "Otokar"), ("KARSN", "Karsan"),
+    ("TTKOM", "Türk Telekom"), ("TCELL", "Turkcell"), ("ARCLK", "Arçelik"),
+    ("VESTL", "Vestel"), ("BIMAS", "BİM"), ("MGROS", "Migros"),
+    ("SOKM", "Şok Marketler"), ("ULKER", "Ülker"), ("CCOLA", "Coca-Cola İçecek"),
+    ("AEFES", "Anadolu Efes"), ("TATGD", "Tat Gıda"), ("PGSUS", "Pegasus"),
+    ("TAVHL", "TAV Havalimanları"), ("DOAS", "Doğuş Otomotiv"),
+    ("CIMSA", "Çimsa"), ("AKCNS", "Akçansa"), ("ENKAI", "Enka İnşaat"),
+    ("TKFEN", "Tekfen Holding"), ("GUBRF", "Gübre Fabrikaları"),
+    ("AGHOL", "Anadolu Grubu Holding"), ("ALARK", "Alarko Holding"),
+    ("ZOREN", "Zorlu Enerji"), ("AKSEN", "Aksa Enerji"), ("AKSA", "Aksa Akrilik"),
+    ("KONTR", "Kontrolmatik"), ("ASTOR", "Astor Enerji"), ("SASA", "Sasa Polyester"),
+    ("BRSAN", "Borusan Boru"), ("BRYAT", "Borusan Yatırım"), ("EGEEN", "Ege Endüstri"),
+    ("HEKTS", "Hektaş"), ("TRGYO", "Torunlar GYO"), ("EKGYO", "Emlak Konut GYO"),
+    ("ISGYO", "İş GYO"), ("KRDMD", "Kardemir"), ("ISDMR", "İskenderun Demir Çelik"),
+    ("DOHOL", "Doğan Holding"), ("LOGO", "Logo Yazılım"), ("NETAS", "Netaş"),
+    ("MAVI", "Mavi Giyim"), ("MPARK", "MLP Sağlık"), ("ECILC", "Eczacıbaşı İlaç"),
+    ("DEVA", "Deva Holding"), ("SELEC", "Selçuk Ecza"), ("TMSN", "Tümosan"),
+    ("YATAS", "Yataş"), ("ANHYT", "Anadolu Hayat Emeklilik"), ("ANSGR", "Anadolu Sigorta"),
+    ("AGESA", "Agesa"), ("TURSG", "Türkiye Sigorta"), ("GESAN", "Girişim Elektrik"),
+    ("ALFAS", "Alfa Solar"), ("SMRTG", "Smart Güneş Enerjisi"), ("ODAS", "Odaş Elektrik"),
+    ("AYDEM", "Aydem Enerji"), ("NTHOL", "Net Holding"), ("CLEBI", "Çelebi Hava Servisi"),
+    ("VESBE", "Vestel Beyaz Eşya"), ("PENTA", "Penta Teknoloji"),
+    ("SDTTR", "SDT Uzay ve Savunma"), ("ISMEN", "İş Yatırım"), ("KLGYO", "Kiler GYO"),
+    ("GLYHO", "Global Yatırım Holding"), ("BASGZ", "Başkent Doğalgaz"),
+    ("AKGRT", "Aksigorta"), ("SUWEN", "Suwen Tekstil"), ("KARTN", "Kartonsan"),
+    ("BANVT", "Banvit"), ("BFREN", "Bosch Fren Sistemleri"), ("CEMTS", "Çemtaş"),
+    ("BURCE", "Burçelik"), ("DGATE", "Datagate"), ("KAREL", "Karel Elektronik"),
+    ("INDES", "İndeks Bilgisayar"), ("ALCTL", "Alcatel Lucent Teletaş"),
+    ("ISFIN", "İş Finansal Kiralama"), ("PSGYO", "Pasifik GYO"),
 ]
 
-# BIST100 dışında bilinen, daha küçük/orta ölçekli örnek BIST hisseleri.
-# Kapsamlı bir liste değil — kendi ilgi alanına göre genişlet.
+# BIST100 dışında bilinen, daha küçük/orta ölçekli örnek BIST hisseleri:
+# (kod, şirket adı). Kapsamlı bir liste değil — kendi ilgi alanına göre genişlet.
 _DIGER_BIST_RAW = [
-    "BRISA", "VAKKO", "IZMDC", "TEKTU", "MERKO", "ARENA", "DESA", "ORGE",
-    "PAGYO", "ATAGY", "METRO", "OZKGY", "USAK", "YUNSA", "KUTPO",
-    "KONYA", "GOLTS",
+    ("BRISA", "Brisa"), ("VAKKO", "Vakko"), ("IZMDC", "İzmir Demir Çelik"),
+    ("TEKTU", "Tek-Art Turizm"), ("MERKO", "Merko Gıda"), ("ARENA", "Arena Bilgisayar"),
+    ("DESA", "Desa Deri"), ("ORGE", "Orge Enerji"), ("PAGYO", "Panora GYO"),
+    ("ATAGY", "Atakule GYO"), ("METRO", "Metro Ticaret"), ("OZKGY", "Özak GYO"),
+    ("USAK", "Uşak Seramik"), ("YUNSA", "Yünsa"), ("KUTPO", "Kütahya Porselen"),
+    ("KONYA", "Konya Çimento"), ("GOLTS", "Göltaş Çimento"),
+]
+
+# Emtia/döviz ve kripto: sembol -> görünen ad.
+_EMTIA_RAW = [
+    ("USDTRY=X", "Dolar/TL"), ("GC=F", "Altın (Futures)"), ("SI=F", "Gümüş (Futures)"),
+    ("CL=F", "Ham Petrol (WTI)"), ("NG=F", "Doğalgaz"), ("HG=F", "Bakır"),
+]
+_CRYPTO_RAW = [
+    ("BTC-USD", "Bitcoin"), ("ETH-USD", "Ethereum"), ("SOL-USD", "Solana"),
+    ("XRP-USD", "Ripple (XRP)"), ("BNB-USD", "BNB (Binance Coin)"),
 ]
 
 TICKERS = {
-    "bist100": [f"{code}.IS" for code in _BIST100_RAW],
-    "diger_bist": [f"{code}.IS" for code in _DIGER_BIST_RAW],
-    "emtia": ["USDTRY=X", "GC=F", "SI=F", "CL=F", "NG=F", "HG=F"],
-    "crypto": ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "BNB-USD"],
+    "bist100": [f"{code}.IS" for code, _ in _BIST100_RAW],
+    "diger_bist": [f"{code}.IS" for code, _ in _DIGER_BIST_RAW],
+    "emtia": [symbol for symbol, _ in _EMTIA_RAW],
+    "crypto": [symbol for symbol, _ in _CRYPTO_RAW],
     # nasdaq100 ve snp500 burada YOK — universe.py'den dinamik çekiliyor.
 }
+
+# Sembol -> şirket/varlık adı eşlemesi (statik gruplar için). Nasdaq-100/S&P 500
+# isimleri `universe.py` tarafından kaynağından otomatik çekilir.
+SYMBOL_NAMES: dict[str, str] = {}
+SYMBOL_NAMES.update({f"{code}.IS": name for code, name in _BIST100_RAW})
+SYMBOL_NAMES.update({f"{code}.IS": name for code, name in _DIGER_BIST_RAW})
+SYMBOL_NAMES.update(dict(_EMTIA_RAW))
+SYMBOL_NAMES.update(dict(_CRYPTO_RAW))
 
 # Fırsat taraması (screener) ayarları — hepsi burada, kod içine gömülü değil,
 # ki ileride birlikte ince ayar yapılabilsin.

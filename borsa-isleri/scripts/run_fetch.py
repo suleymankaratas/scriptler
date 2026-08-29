@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import TICKERS, all_symbols
 from src.fetch import fetch_many_bulk
-from src.storage import get_connection, upsert_prices
+from src.storage import get_connection, upsert_prices, write_last_fetch_info
 from src.universe import get_nasdaq100_symbols, get_snp500_symbols
 
 
@@ -49,6 +49,8 @@ def main() -> None:
         if not written:
             failed.append(symbol)
     conn.close()
+
+    write_last_fetch_info(symbol_count=len(all_symbols_list) - len(failed), row_count=total_rows)
 
     print(f"\nBitti. Toplam {total_rows} satır yazıldı/güncellendi.")
     if failed:

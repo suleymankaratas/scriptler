@@ -3,19 +3,82 @@ ortak render fonksiyonu — 6 kategori sayfasının hepsi bunu çağırır, kod
 tekrarını önler.
 """
 
+import datetime as dt
+import time
+
 import pandas as pd
 import streamlit as st
 
-# Aralık seçenekleri: (etiket, yfinance period, yfinance interval, resample)
-# "resample" None değilse, çekilen veri o pandas kuralına göre yeniden
-# örneklenir (Yahoo'da native olmayan aralıklar için, örn. "2 Saatlik").
-INTERVAL_OPTIONS = {
-    "Günlük (5 yıl)": ("5y", "1d", None),
-    "Haftalık (5 yıl)": ("5y", "1wk", None),
-    "Aylık (5 yıl)": ("5y", "1mo", None),
-    "Saatlik (~2 yıl, Yahoo sınırı)": ("2y", "1h", None),
-    "2 Saatlik (~2 yıl, saatlikten hesaplanır)": ("2y", "1h", "2h"),
+# Aralık grupları (diğer finans platformlarındaki gibi: Dakika/Saat/Gün).
+# Her seçenek: period/interval (yfinance) + resample (Yahoo'da native olmayan
+# aralıklar için, daha ince bir veriden pandas ile hesaplanır).
+#
+# Yahoo Finance'in gerçek kısıtları (ücretsiz kaynak, değiştiremeyiz):
+#  - 1 dakikalık veri: sadece son 7 gün
+#  - 2-30 dakikalık veri: sadece son ~60 gün
+#  - Saatlik veri: sadece son ~2 yıl
+#  - Günlük ve üzeri: uzun geçmiş (5 yıl / mevcut olabildiğince "max")
+INTERVAL_GROUPS: dict[str, dict[str, dict]] = {
+    "Dakika": {
+        "1 Dakika": {"period": "7d", "interval": "1m", "resample": None},
+        "2 Dakika": {"period": "60d", "interval": "2m", "resample": None},
+        "3 Dakika": {"period": "7d", "interval": "1m", "resample": "3min"},
+        "5 Dakika": {"period": "60d", "interval": "5m", "resample": None},
+        "10 Dakika": {"period": "60d", "interval": "5m", "resample": "10min"},
+        "15 Dakika": {"period": "60d", "interval": "15m", "resample": None},
+        "30 Dakika": {"period": "60d", "interval": "30m", "resample": None},
+        "45 Dakika": {"period": "60d", "interval": "15m", "resample": "45min"},
+    },
+    "Saat": {
+        "1 Saat": {"period": "2y", "interval": "1h", "resample": None},
+        "2 Saat": {"period": "2y", "interval": "1h", "resample": "2h"},
+        "3 Saat": {"period": "2y", "interval": "1h", "resample": "3h"},
+        "4 Saat": {"period": "2y", "interval": "1h", "resample": "4h"},
+    },
+    "Gün": {
+        "1 Gün": {"period": "5y", "interval": "1d", "resample": None, "from_db": True},
+        "1 Hafta": {"period": "5y", "interval": "1wk", "resample": None},
+        "1 Ay": {"period": "5y", "interval": "1mo", "resample": None},
+        "3 Ay": {"period": "max", "interval": "3mo", "resample": None},
+        "6 Ay": {"period": "max", "interval": "1mo", "resample": "6ME"},
+        "12 Ay": {"period": "max", "interval": "1mo", "resample": "12ME"},
+    },
 }
+
+# Tablo sütun adlarını okunur Türkçe başlıklara çeviren ortak eşleme.
+DISPLAY_COLUMNS = {
+    "symbol": "Sembol",
+    "sirket_adi": "Şirket Adı",
+    "kategori": "Kategori",
+    "current_price": "Güncel Fiyat",
+    "pct_from_52w_low": "52 Hafta Dibinden %",
+    "pct_from_52w_high": "52 Hafta Zirvesinden %",
+    "sideways_range_pct": "Yatay Bant %",
+    "rsi": "RSI",
+    "aday_mi": "Aday mı?",
+    "date": "Tarih",
+    "open": "Açılış",
+    "high": "Yüksek",
+    "low": "Düşük",
+    "close": "Kapanış",
+    "volume": "Hacim",
+}
+
+
+def rename_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    """DataFrame sütunlarını okunur Türkçe başlıklara çevirir (sadece
+    görüntüleme için — mantıkta orijinal isimler kullanılmaya devam eder).
+    """
+    return df.rename(columns=DISPLAY_COLUMNS)
+
+
+def add_name_column(df: pd.DataFrame, name_map: dict[str, str]) -> pd.DataFrame:
+    """"symbol" sütununun hemen yanına "sirket_adi" (şirket/varlık adı) sütunu ekler."""
+    if df.empty or "symbol" not in df.columns:
+        return df
+    df = df.copy()
+    df.insert(1, "sirket_adi", df["symbol"].map(name_map).fillna(""))
+    return df
 
 
 def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
@@ -28,34 +91,68 @@ def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     return resampled[resampled["Close"].notna()]
 
 
-def _load_chart_data(symbol: str, interval_label: str, storage, fetch, conn) -> pd.DataFrame:
-    """Seçilen aralığa göre veriyi döner (date/open/high/low/close/volume,
-    küçük harf sütun adlarıyla — hem DB'den hem canlı çekimden aynı format).
-    """
-    period, interval, resample_rule = INTERVAL_OPTIONS[interval_label]
-
-    if interval == "1d":
-        # Günlük veri zaten toplu çekimle SQLite'ta duruyor — tekrar ağa
-        # gitmeye gerek yok.
-        return storage.read_prices(conn, symbol)
-
-    # Diğer aralıklar (haftalık/aylık/saatlik/2 saatlik) sadece incelenen bu
-    # tek sembol için, o an canlı çekilir — 700 sembole toplu uygulanmaz.
-    raw = fetch.fetch_history(symbol, period=period, interval=interval)
-    if raw.empty:
-        return pd.DataFrame()
-
-    if resample_rule:
-        raw = _resample_ohlcv(raw, resample_rule)
-
+def _normalize_columns(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw.reset_index()
     date_col = df.columns[0]
-    df = df.rename(columns={date_col: "date", "Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
+    df = df.rename(
+        columns={
+            date_col: "date", "Open": "open", "High": "high",
+            "Low": "low", "Close": "close", "Volume": "volume",
+        }
+    )
     return df[["date", "open", "high", "low", "close", "volume"]]
 
 
-def render_category_page(title: str, symbols: list[str], config, storage, screener, fetch) -> None:
+@st.cache_data(ttl=60, show_spinner=False)
+def _fetch_live(_fetch, symbol: str, period: str, interval: str, resample_rule: str | None):
+    """Tek bir sembol için canlıya en yakın veriyi çeker (60 sn önbellekli —
+    her etkileşimde Yahoo'ya gitmemek için, ama "Şimdi Yenile" ile anında
+    tazelenebilir). Modül argümanları (_fetch) Streamlit'in cache anahtarına
+    dahil edilmez (başına _ konan argümanlar hash'lenmez).
+    """
+    raw = _fetch.fetch_history(symbol, period=period, interval=interval)
+    if raw.empty:
+        return pd.DataFrame(), time.time()
+    if resample_rule:
+        raw = _resample_ohlcv(raw, resample_rule)
+    return _normalize_columns(raw), time.time()
+
+
+def _load_chart_data(symbol: str, group: str, label: str, storage, fetch, conn):
+    """Seçilen aralığa göre veriyi (df, veri_zamani) olarak döner.
+
+    "1 Gün" için zaten toplu çekilmiş SQLite verisi kullanılır (network
+    gerekmez). Diğer tüm aralıklar (haftalık/aylık/saatlik/dakikalık) sadece
+    incelenen bu tek sembol için canlı çekilir.
+    """
+    opts = INTERVAL_GROUPS[group][label]
+
+    if opts.get("from_db"):
+        return storage.read_prices(conn, symbol), None
+
+    df, fetched_at = _fetch_live(fetch, symbol, opts["period"], opts["interval"], opts["resample"])
+    return df, fetched_at
+
+
+def render_last_update_banner(storage) -> None:
+    """Toplu (günlük) verinin en son ne zaman çekildiğini gösterir."""
+    info = storage.read_last_fetch_info()
+    if not info:
+        st.caption("Son toplu veri güncellemesi bilgisi yok (henüz run_fetch.py çalıştırılmamış).")
+        return
+    fetched_at = dt.datetime.fromtimestamp(info["fetched_at"])
+    st.caption(
+        f"📅 Son toplu veri güncellemesi: **{fetched_at.strftime('%d.%m.%Y %H:%M')}** "
+        f"({info['symbol_count']} sembol, {info['row_count']} satır) — "
+        "günlük fiyatlar bu tarihten itibaren güncel değilse `run_fetch.py`'yi tekrar çalıştır."
+    )
+
+
+def render_category_page(title: str, symbols: list[str], config, storage, screener, fetch, name_map: dict | None = None) -> None:
     st.title(title)
+    render_last_update_banner(storage)
+
+    name_map = name_map or config.SYMBOL_NAMES
 
     conn = storage.get_connection()
     db_symbols = set(storage.all_symbols_in_db(conn))
@@ -82,28 +179,45 @@ def render_category_page(title: str, symbols: list[str], config, storage, screen
     else:
         candidate_count = int(result["aday_mi"].sum())
         st.caption(f"{len(result)} sembol tarandı, {candidate_count} aday bulundu.")
-        st.dataframe(result, use_container_width=True, hide_index=True)
+        result = add_name_column(result, name_map)
+        st.dataframe(rename_for_display(result), use_container_width=True, hide_index=True)
 
     st.subheader("Sembol İncele")
-    col_sym, col_interval = st.columns([2, 2])
+    col_sym, col_group, col_value, col_refresh = st.columns([2, 1.3, 1.5, 1])
     with col_sym:
-        selected_symbol = st.selectbox("Sembol", options=available, key=f"select_{title}")
-    with col_interval:
-        interval_label = st.selectbox(
-            "Aralık", options=list(INTERVAL_OPTIONS.keys()), key=f"interval_{title}"
+        selected_symbol = st.selectbox(
+            "Sembol",
+            options=available,
+            format_func=lambda s: f"{s} — {name_map.get(s, '')}" if name_map.get(s) else s,
+            key=f"select_{title}",
         )
+    with col_group:
+        group = st.radio("Grup", options=list(INTERVAL_GROUPS.keys()), horizontal=True, key=f"group_{title}")
+    with col_value:
+        label = st.selectbox("Aralık", options=list(INTERVAL_GROUPS[group].keys()), key=f"interval_{group}_{title}")
+    with col_refresh:
+        st.write("")
+        if st.button("🔄 Şimdi Yenile", key=f"refresh_{title}"):
+            _fetch_live.clear()
 
     with st.spinner("Veri hazırlanıyor..."):
-        df = _load_chart_data(selected_symbol, interval_label, storage, fetch, conn)
+        df, fetched_at = _load_chart_data(selected_symbol, group, label, storage, fetch, conn)
     conn.close()
 
     if df.empty:
-        st.info("Bu sembol/aralık için veri bulunamadı.")
+        st.info(
+            "Bu sembol/aralık için veri bulunamadı (Yahoo Finance bu aralıkta "
+            "veri sunmuyor olabilir — özellikle dakikalık veriler için işlem "
+            "saatleri dışında veya çok yeni/az işlem gören semboller)."
+        )
         return
+
+    if fetched_at is not None:
+        st.caption(f"⏱ Bu grafik canlı çekildi: {dt.datetime.fromtimestamp(fetched_at).strftime('%H:%M:%S')}")
 
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.subheader(f"{selected_symbol} — Kapanış Fiyatı ({interval_label})")
+        st.subheader(f"{selected_symbol} — Kapanış Fiyatı ({label})")
         st.line_chart(df.set_index("date")["close"])
     with col2:
         last_row = df.iloc[-1]
@@ -114,4 +228,8 @@ def render_category_page(title: str, symbols: list[str], config, storage, screen
             st.metric("Değişim (son bar)", f"{change_pct:+.2f}%")
 
     st.subheader("Veri Tablosu")
-    st.dataframe(df.sort_values("date", ascending=False), use_container_width=True, hide_index=True)
+    st.dataframe(
+        rename_for_display(df.sort_values("date", ascending=False)),
+        use_container_width=True,
+        hide_index=True,
+    )
