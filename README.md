@@ -35,6 +35,11 @@ kendi sayfası olarak menüde görünür.
    `2_Router_Ariza_Kontrol.py`) örnek al.
 4. Projenin bağımlılıkları `workspace/requirements.txt`'te yoksa oraya da ekle
    (workspace kendi venv'inde tüm sayfaları aynı süreçte çalıştırır).
+5. Menüde görünmesi için sol menüdeki **Menü Yönetimi** sayfasından "Yeni
+   Sayfa Kaydet" formuyla (başlık + sayfa dosyası yolu) kaydet — istersen
+   yeni bir klasöre de ata. Menünün klasör/sıra yapısı `workspace/menu_config.json`
+   içinde tutulur; hiçbir menü işlemi (taşıma, kaldırma) diskteki proje
+   dosyalarını etkilemez.
 
 Her proje klasörü ayrıca kendi başına da (kendi `.venv`'i ile) çalıştırılabilir
 kalır — menü sadece bir üst katman arayüzdür, projelerin bağımsızlığını
