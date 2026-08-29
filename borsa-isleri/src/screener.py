@@ -114,13 +114,25 @@ def screen_symbols(symbol_category_pairs: list[tuple[str, str]], storage_module,
     if not rows:
         return pd.DataFrame(
             columns=[
-                "symbol", "kategori", "current_price", "pct_from_52w_low",
+                "sira", "symbol", "kategori", "current_price", "pct_from_52w_low",
                 "pct_from_52w_high", "sideways_range_pct", "rsi", "aday_mi", "aciklama",
             ]
         )
 
     result = pd.DataFrame(rows)
-    return result.sort_values(["aday_mi", "pct_from_52w_low"], ascending=[False, True]).reset_index(drop=True)
+
+    # "Fırsat skoru": düşük olması daha avantajlı demek (dibe daha yakın,
+    # daha dar/yatay bant, daha nötr/düşük RSI). Sadece sıralama ve "Sıra"
+    # numarası için kullanılır, ekranda ayrı bir sütun olarak gösterilmez.
+    score = result["pct_from_52w_low"] + result["sideways_range_pct"] + result["rsi"]
+    result = result.assign(_skor=score).sort_values(
+        ["aday_mi", "_skor"], ascending=[False, True]
+    ).drop(columns="_skor").reset_index(drop=True)
+
+    result.insert(0, "sira", pd.NA)
+    candidate_mask = result["aday_mi"]
+    result.loc[candidate_mask, "sira"] = range(1, int(candidate_mask.sum()) + 1)
+    return result
 
 
 def _to_usd(df: pd.DataFrame, usdtry_df: pd.DataFrame | None) -> pd.Series:
@@ -237,10 +249,22 @@ def screen_chart_opportunities(
     if not rows:
         return pd.DataFrame(
             columns=[
-                "symbol", "kategori", "current_price_usd", "vs_2 yıl", "vs_5 yıl",
+                "sira", "symbol", "kategori", "current_price_usd", "vs_2 yıl", "vs_5 yıl",
                 "drawdown_from_peak_pct", "sideways_range_pct", "aday_mi", "aciklama",
             ]
         )
 
     result = pd.DataFrame(rows)
-    return result.sort_values(["aday_mi", "drawdown_from_peak_pct"], ascending=[False, True]).reset_index(drop=True)
+
+    # "Fırsat skoru": düşük olması daha avantajlı demek (eski fiyat seviyesine
+    # daha tam gelmiş VE daha dar/yatay bant). Sadece sıralama için kullanılır.
+    proximity = result[["vs_2 yıl", "vs_5 yıl"]].apply(pd.to_numeric, errors="coerce").abs().min(axis=1, skipna=True)
+    score = result["sideways_range_pct"] + proximity.fillna(proximity.max() if proximity.notna().any() else 0)
+    result = result.assign(_skor=score).sort_values(
+        ["aday_mi", "_skor"], ascending=[False, True]
+    ).drop(columns="_skor").reset_index(drop=True)
+
+    result.insert(0, "sira", pd.NA)
+    candidate_mask = result["aday_mi"]
+    result.loc[candidate_mask, "sira"] = range(1, int(candidate_mask.sum()) + 1)
+    return result

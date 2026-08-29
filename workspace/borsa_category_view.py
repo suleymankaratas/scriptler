@@ -47,6 +47,7 @@ INTERVAL_GROUPS: dict[str, dict[str, dict]] = {
 
 # Tablo sütun adlarını okunur Türkçe başlıklara çeviren ortak eşleme.
 DISPLAY_COLUMNS = {
+    "sira": "Sıra",
     "symbol": "Sembol",
     "sirket_adi": "Şirket Adı",
     "kategori": "Kategori",
@@ -175,6 +176,12 @@ def render_favoritable_table(df: pd.DataFrame, name_map: dict[str, str], favorit
 
     current_favorites = favorites.load_favorites()
     df.insert(0, "favori", df["symbol"].isin(current_favorites))
+
+    if "aday_mi" in df.columns:
+        # Bilgi amaçlı, salt-okunur bir sonuç sütunu — boolean olarak
+        # bırakırsak Streamlit onu da tıklanabilir bir kutucuk gibi
+        # gösteriyor ve "⭐ Favori" ile karışıyor. Düz metne çeviriyoruz.
+        df["aday_mi"] = df["aday_mi"].map({True: "✅ Evet", False: "—"})
 
     display_df = rename_for_display(df).rename(columns={"favori": FAVORITE_COLUMN})
     other_columns = [c for c in display_df.columns if c != FAVORITE_COLUMN]
