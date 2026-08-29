@@ -116,6 +116,18 @@ SCREENER_SETTINGS = {
     "rsi_period": 14,
     "rsi_min": 20.0,
     "rsi_max": 55.0,
+
+    # --- Grafik Fırsatı (dolar bazlı, uzun vadeli, temelden bağımsız) ---
+    # BIST hisseleri USDTRY=X ile dolar bazına çevrilir; Nasdaq/S&P/kripto/
+    # emtia zaten dolar bazlı olduğu için doğrudan kullanılır.
+    # Karşılaştırılacak geçmiş noktalar (yaklaşık işlem günü sayısı olarak)
+    "chart_opportunity_lookback_days": {"2 yıl": 504, "5 yıl": 1260},
+    # Güncel fiyat, o geçmiş noktaya en fazla bu yüzde yakınsa "o seviyeye
+    # geri gelmiş" sayılır
+    "flat_vs_past_threshold_pct": 15.0,
+    # Tüm geçmişteki zirveden dolar bazlı en az bu kadar (negatif) düşmüş
+    # olmalı ki "ciddi düşüş yaşamış" sayılsın
+    "major_decline_threshold_pct": -35.0,
 }
 
 

@@ -1,6 +1,7 @@
 **/data/*.db
 **/data/universe_*.json
 **/data/last_fetch.json
+**/data/favorites.json
 **/.venv/
 **/venv/
 **/__pycache__/

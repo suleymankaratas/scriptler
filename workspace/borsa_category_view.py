@@ -56,6 +56,11 @@ DISPLAY_COLUMNS = {
     "sideways_range_pct": "Yatay Bant %",
     "rsi": "RSI",
     "aday_mi": "Aday mı?",
+    "aciklama": "Açıklama",
+    "current_price_usd": "Güncel Fiyat (USD)",
+    "vs_2 yıl": "2 Yıl Önceye Göre % (USD)",
+    "vs_5 yıl": "5 Yıl Önceye Göre % (USD)",
+    "drawdown_from_peak_pct": "Zirveden Uzaklık % (USD)",
     "date": "Tarih",
     "open": "Açılış",
     "high": "Yüksek",
@@ -63,6 +68,8 @@ DISPLAY_COLUMNS = {
     "close": "Kapanış",
     "volume": "Hacim",
 }
+
+FAVORITE_COLUMN = "⭐ Favori"
 
 
 def rename_for_display(df: pd.DataFrame) -> pd.DataFrame:
@@ -134,6 +141,100 @@ def _load_chart_data(symbol: str, group: str, label: str, storage, fetch, conn):
     return df, fetched_at
 
 
+def _matches_search(symbol: str, name_map: dict[str, str], query: str) -> bool:
+    q = query.strip().casefold()
+    if not q:
+        return True
+    return q in symbol.casefold() or q in name_map.get(symbol, "").casefold()
+
+
+def render_favoritable_table(df: pd.DataFrame, name_map: dict[str, str], favorites, key_prefix: str) -> None:
+    """Arama kutusu + "⭐ Favori" sütunu olan, düzenlenebilir bir tablo çizer.
+
+    Favori işaretini değiştirmek `favorites.set_favorite(...)` ile anında
+    kalıcı hale gelir (data/favorites.json) ve sayfa hemen yenilenir — böylece
+    "Hisselerim" bölümü de anında güncellenir.
+    """
+    if df.empty:
+        st.dataframe(rename_for_display(df), use_container_width=True, hide_index=True)
+        return
+
+    df = df if "sirket_adi" in df.columns else add_name_column(df, name_map)
+    df = df.reset_index(drop=True)
+
+    query = st.text_input(
+        "🔍 Ara (sembol veya şirket adı)", key=f"search_{key_prefix}", placeholder="örn. THYAO veya Türk Hava"
+    )
+    if query:
+        mask = df["symbol"].apply(lambda s: _matches_search(s, name_map, query))
+        df = df[mask].reset_index(drop=True)
+
+    if df.empty:
+        st.caption("Arama sonucunda sembol bulunamadı.")
+        return
+
+    current_favorites = favorites.load_favorites()
+    df.insert(0, "favori", df["symbol"].isin(current_favorites))
+
+    display_df = rename_for_display(df).rename(columns={"favori": FAVORITE_COLUMN})
+    other_columns = [c for c in display_df.columns if c != FAVORITE_COLUMN]
+
+    edited = st.data_editor(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        disabled=other_columns,
+        key=f"editor_{key_prefix}",
+    )
+
+    changed = False
+    for i in range(len(df)):
+        symbol = df.loc[i, "symbol"]
+        row_category = df.loc[i, "kategori"] if "kategori" in df.columns else ""
+        old_val = symbol in current_favorites
+        new_val = bool(edited.loc[i, FAVORITE_COLUMN])
+        if old_val != new_val:
+            favorites.set_favorite(symbol, row_category, new_val)
+            changed = True
+
+    if changed:
+        st.rerun()
+
+
+def render_favorites_section(
+    available: list[str], name_map: dict[str, str], storage, favorites, category_label: str
+) -> None:
+    """Bu kategorideki favori (⭐ işaretlenmiş) sembolleri, güncel fiyatlarıyla gösterir."""
+    st.subheader("⭐ Hisselerim (bu kategori)")
+
+    current_favorites = favorites.load_favorites()
+    fav_symbols = [s for s in available if s in current_favorites]
+
+    if not fav_symbols:
+        st.caption(
+            "Henüz bu kategoriden favori eklemedin — yukarıdaki tablolarda "
+            f"{FAVORITE_COLUMN} kutucuğunu işaretleyerek ekleyebilirsin."
+        )
+        return
+
+    conn = storage.get_connection()
+    rows = []
+    for symbol in fav_symbols:
+        price_df = storage.read_prices(conn, symbol)
+        if price_df.empty:
+            continue
+        rows.append(
+            {
+                "symbol": symbol,
+                "kategori": current_favorites.get(symbol, category_label),
+                "current_price": float(price_df.iloc[-1]["close"]),
+            }
+        )
+    conn.close()
+
+    render_favoritable_table(pd.DataFrame(rows), name_map, favorites, key_prefix=f"hisselerim_{category_label}")
+
+
 def render_last_update_banner(storage) -> None:
     """Toplu (günlük) verinin en son ne zaman çekildiğini gösterir."""
     info = storage.read_last_fetch_info()
@@ -148,7 +249,9 @@ def render_last_update_banner(storage) -> None:
     )
 
 
-def render_category_page(title: str, symbols: list[str], config, storage, screener, fetch, name_map: dict | None = None) -> None:
+def render_category_page(
+    title: str, symbols: list[str], config, storage, screener, fetch, favorites, name_map: dict | None = None
+) -> None:
     st.title(title)
     render_last_update_banner(storage)
 
@@ -166,6 +269,8 @@ def render_category_page(title: str, symbols: list[str], config, storage, screen
         )
         return
 
+    render_favorites_section(available, name_map, storage, favorites, title)
+
     st.subheader("Fırsat Taraması (bu kategori)")
     st.caption(
         "Uzun süredir ucuz (52 haftalık dibe yakın) VE yatayda kalmış "
@@ -179,8 +284,23 @@ def render_category_page(title: str, symbols: list[str], config, storage, screen
     else:
         candidate_count = int(result["aday_mi"].sum())
         st.caption(f"{len(result)} sembol tarandı, {candidate_count} aday bulundu.")
-        result = add_name_column(result, name_map)
-        st.dataframe(rename_for_display(result), use_container_width=True, hide_index=True)
+        render_favoritable_table(result, name_map, favorites, key_prefix=f"price_{title}")
+
+    st.subheader("Grafik Fırsatı (bu kategori)")
+    st.caption(
+        "Temel verilerden (defter değeri vb.) bağımsız, sadece fiyat grafiğine "
+        "bakar: dolar bazında 2 veya 5 yıl önceki seviyesine gerilemiş, "
+        "zirveden ciddi düşmüş VE şu an yatayda olan sembolleri işaretler. "
+        "BIST hisseleri için TL fiyatı otomatik dolara çevrilir. Yatırım "
+        "tavsiyesi değildir."
+    )
+    chart_result = screener.screen_chart_opportunities(pairs, storage, conn)
+    if chart_result.empty:
+        st.info("Yeterli geçmiş veri olan sembol bulunamadı (en az ~2 yıllık veri önerilir).")
+    else:
+        chart_candidate_count = int(chart_result["aday_mi"].sum())
+        st.caption(f"{len(chart_result)} sembol tarandı, {chart_candidate_count} aday bulundu.")
+        render_favoritable_table(chart_result, name_map, favorites, key_prefix=f"chart_{title}")
 
     st.subheader("Sembol İncele")
     col_sym, col_group, col_value, col_refresh = st.columns([2, 1.3, 1.5, 1])

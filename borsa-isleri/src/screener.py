@@ -1,10 +1,19 @@
-"""Fiyat bazlı fırsat tarama (screener).
+"""Fırsat tarama (screener) — iki farklı bakış açısı sunar.
 
-Sadece fiyat/hacim verisiyle çalışır (elimizdeki veri bu): bir hissenin
-"uzun süredir ucuz" (52 haftalık dibe yakın) VE "yatay" (son N ayda dar
-bantta) olup olmadığını, RSI ile birlikte değerlendirir. Eşikler
+1. `screen_symbols` — "uzun süredir ucuz" (52 haftalık dibe yakın) VE
+   "yatay" (son N ayda dar bantta) hisseleri RSI ile birlikte değerlendirir.
+2. `screen_chart_opportunities` ("Grafik Fırsatı") — temel verilerden (defter
+   değeri vb.) bağımsız, sadece fiyat grafiğine bakarak: dolar bazında 2 veya
+   5 yıl önceki seviyesine gerilemiş, zirveden ciddi düşmüş VE şu an yatayda
+   olan sembolleri işaretler. BIST hisseleri için TL fiyatı USDTRY=X ile
+   dolar bazına çevrilir (Türk hisselerinin TL bazında "yükseliyormuş gibi"
+   görünüp aslında enflasyon/kur nedeniyle reel olarak gerilemiş olmasını
+   hesaba katmak için).
+
+İkisi de sadece fiyat/hacim verisiyle çalışır (elimizdeki veri bu). Eşikler
 `config.SCREENER_SETTINGS`'te tutulur — ileride birlikte ince ayar
-yapılabilir.
+yapılabilir. Her iki tarama da adaylar için okunabilir bir "aciklama"
+(neden aday işaretlendiği) üretir.
 
 Not: Bu, YATIRIM TAVSİYESİ değildir — sadece dikkat çekici adayları öne
 çıkaran basit bir filtredir. Karar kullanıcıya aittir.
@@ -67,6 +76,14 @@ def compute_symbol_metrics(df: pd.DataFrame, settings: dict | None = None) -> di
         and settings["rsi_min"] <= rsi_value <= settings["rsi_max"]
     )
 
+    aciklama = ""
+    if is_candidate:
+        aciklama = (
+            f"52 haftalık dibin sadece %{pct_from_low:.1f} üzerinde (zirveden %{abs(pct_from_high):.0f} geride), "
+            f"son ~{sideways_window} günde %{sideways_range_pct:.1f} bandında yatay seyrediyor, "
+            f"RSI {rsi_value:.0f} (nötr/aşırı satım bölgesinde)."
+        )
+
     return {
         "current_price": current_price,
         "pct_from_52w_low": round(pct_from_low, 1),
@@ -74,6 +91,7 @@ def compute_symbol_metrics(df: pd.DataFrame, settings: dict | None = None) -> di
         "sideways_range_pct": round(sideways_range_pct, 1),
         "rsi": round(rsi_value, 1),
         "aday_mi": is_candidate,
+        "aciklama": aciklama,
     }
 
 
@@ -97,9 +115,132 @@ def screen_symbols(symbol_category_pairs: list[tuple[str, str]], storage_module,
         return pd.DataFrame(
             columns=[
                 "symbol", "kategori", "current_price", "pct_from_52w_low",
-                "pct_from_52w_high", "sideways_range_pct", "rsi", "aday_mi",
+                "pct_from_52w_high", "sideways_range_pct", "rsi", "aday_mi", "aciklama",
             ]
         )
 
     result = pd.DataFrame(rows)
     return result.sort_values(["aday_mi", "pct_from_52w_low"], ascending=[False, True]).reset_index(drop=True)
+
+
+def _to_usd(df: pd.DataFrame, usdtry_df: pd.DataFrame | None) -> pd.Series:
+    """BIST (TL bazlı) sembollerin kapanış fiyatını USDTRY kuruna bölerek
+    dolar bazına çevirir. usdtry_df yoksa/boşsa TL fiyatı olduğu gibi döner
+    (dolara çevrilmeden) — bu durumda çağıran taraf sonucu yorumlarken dikkatli
+    olmalı.
+    """
+    if usdtry_df is None or usdtry_df.empty:
+        return df["close"]
+
+    merged = pd.merge(
+        df[["date", "close"]],
+        usdtry_df[["date", "close"]].rename(columns={"close": "usdtry"}),
+        on="date",
+        how="left",
+    )
+    merged["usdtry"] = merged["usdtry"].ffill().bfill()
+    return merged["close"] / merged["usdtry"]
+
+
+def compute_chart_opportunity(
+    df: pd.DataFrame,
+    usdtry_df: pd.DataFrame | None,
+    is_try_denominated: bool,
+    settings: dict | None = None,
+) -> dict | None:
+    """"Grafik Fırsatı": temel verilerden (defter değeri vb.) bağımsız,
+    sadece fiyat grafiğine bakarak — dolar bazında 2 veya 5 yıl önceki
+    seviyesine gerilemiş, zirveden ciddi düşmüş VE şu an yatayda olan
+    sembolleri işaretler.
+    """
+    settings = settings or SCREENER_SETTINGS
+    sideways_window = settings["sideways_window_days"]
+
+    if df.empty or len(df) < 60:
+        return None
+
+    close = _to_usd(df, usdtry_df) if is_try_denominated else df["close"]
+    current_price = float(close.iloc[-1])
+    if not current_price:
+        return None
+
+    lookbacks = settings["chart_opportunity_lookback_days"]
+    flat_threshold = settings["flat_vs_past_threshold_pct"]
+
+    pct_vs_past: dict[str, float | None] = {}
+    near_past: dict[str, bool] = {}
+    for label, days in lookbacks.items():
+        if len(close) > days:
+            past_price = float(close.iloc[-days])
+            pct = (current_price - past_price) / past_price * 100 if past_price else None
+        else:
+            pct = None
+        pct_vs_past[label] = round(pct, 1) if pct is not None else None
+        near_past[label] = pct is not None and abs(pct) <= flat_threshold
+
+    peak = float(close.max())
+    drawdown_from_peak_pct = (current_price - peak) / peak * 100 if peak else 0.0
+
+    window = close.iloc[-sideways_window:]
+    sw_low, sw_high = float(window.min()), float(window.max())
+    sideways_range_pct = (sw_high - sw_low) / sw_low * 100 if sw_low else float("nan")
+
+    has_major_decline = drawdown_from_peak_pct <= settings["major_decline_threshold_pct"]
+    is_sideways = sideways_range_pct <= settings["sideways_threshold_pct"]
+    returned_to_old_price = any(near_past.values())
+
+    is_candidate = returned_to_old_price and has_major_decline and is_sideways
+
+    aciklama = ""
+    if is_candidate:
+        seviye_parcalari = [label for label, near in near_past.items() if near]
+        seviyeler = " ve ".join(seviye_parcalari)
+        aciklama = (
+            f"Dolar bazlı fiyat {seviyeler} önceki seviyesine gerilemiş, "
+            f"zirveden %{abs(drawdown_from_peak_pct):.0f} geride ve "
+            f"son ~{sideways_window} günde %{sideways_range_pct:.1f} bandında yatay seyrediyor "
+            "(temel veriden bağımsız, sadece fiyat grafiğine bakılmıştır)."
+        )
+
+    result = {
+        "current_price_usd": round(current_price, 2),
+        "drawdown_from_peak_pct": round(drawdown_from_peak_pct, 1),
+        "sideways_range_pct": round(sideways_range_pct, 1),
+        "aday_mi": is_candidate,
+        "aciklama": aciklama,
+    }
+    for label in lookbacks:
+        result[f"vs_{label}"] = pct_vs_past[label]
+    return result
+
+
+def screen_chart_opportunities(
+    symbol_category_pairs: list[tuple[str, str]], storage_module, conn
+) -> pd.DataFrame:
+    """Tüm sembolleri "Grafik Fırsatı" mantığıyla tarar (bkz.
+    `compute_chart_opportunity`). BIST sembolleri (".IS") otomatik olarak
+    USDTRY=X ile dolar bazına çevrilir.
+    """
+    usdtry_df = storage_module.read_prices(conn, "USDTRY=X")
+
+    rows = []
+    for symbol, category in symbol_category_pairs:
+        if symbol == "USDTRY=X":
+            continue
+        df = storage_module.read_prices(conn, symbol)
+        is_try = symbol.endswith(".IS")
+        metrics = compute_chart_opportunity(df, usdtry_df if is_try else None, is_try)
+        if metrics is None:
+            continue
+        rows.append({"symbol": symbol, "kategori": category, **metrics})
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "symbol", "kategori", "current_price_usd", "vs_2 yıl", "vs_5 yıl",
+                "drawdown_from_peak_pct", "sideways_range_pct", "aday_mi", "aciklama",
+            ]
+        )
+
+    result = pd.DataFrame(rows)
+    return result.sort_values(["aday_mi", "drawdown_from_peak_pct"], ascending=[False, True]).reset_index(drop=True)

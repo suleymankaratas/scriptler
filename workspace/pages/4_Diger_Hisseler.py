@@ -16,5 +16,8 @@ config = importlib.import_module("borsa_isleri_src.config")
 storage = importlib.import_module("borsa_isleri_src.storage")
 screener = importlib.import_module("borsa_isleri_src.screener")
 fetch = importlib.import_module("borsa_isleri_src.fetch")
+favorites = importlib.import_module("borsa_isleri_src.favorites")
 
-render_category_page("Diğer Hisseler (BIST100 Dışı)", config.TICKERS["diger_bist"], config, storage, screener, fetch)
+render_category_page(
+    "Diğer Hisseler (BIST100 Dışı)", config.TICKERS["diger_bist"], config, storage, screener, fetch, favorites
+)
