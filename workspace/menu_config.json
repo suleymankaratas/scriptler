@@ -1,0 +1,88 @@
+{
+  "items": [
+    {
+      "type": "folder",
+      "id": "kurum-i-leri",
+      "title": "kurum işleri",
+      "parent_id": null
+    },
+    {
+      "type": "page",
+      "id": "router_ariza_kontrol",
+      "title": "Router Arıza Kontrol",
+      "page_file": "pages/2_Router_Ariza_Kontrol.py",
+      "parent_id": "kurum-i-leri",
+      "hidden": false
+    },
+    {
+      "type": "folder",
+      "id": "borsa",
+      "title": "borsa",
+      "parent_id": null
+    },
+    {
+      "type": "page",
+      "id": "borsa_takip",
+      "title": "Borsa Takip",
+      "page_file": "pages/1_Borsa_Takip.py",
+      "parent_id": "borsa",
+      "hidden": true
+    },
+    {
+      "type": "page",
+      "id": "bist_100",
+      "title": "BIST 100",
+      "page_file": "pages/3_BIST_100.py",
+      "parent_id": "borsa",
+      "hidden": false
+    },
+    {
+      "type": "page",
+      "id": "diger_hisseler",
+      "title": "Diğer Hisseler",
+      "page_file": "pages/4_Diger_Hisseler.py",
+      "parent_id": "borsa",
+      "hidden": false
+    },
+    {
+      "type": "page",
+      "id": "emtia",
+      "title": "Emtia & Döviz",
+      "page_file": "pages/5_Emtia.py",
+      "parent_id": "borsa",
+      "hidden": false
+    },
+    {
+      "type": "page",
+      "id": "nasdaq_100",
+      "title": "Nasdaq-100",
+      "page_file": "pages/6_Nasdaq_100.py",
+      "parent_id": "borsa",
+      "hidden": false
+    },
+    {
+      "type": "page",
+      "id": "sp500",
+      "title": "S&P 500",
+      "page_file": "pages/7_SP500.py",
+      "parent_id": "borsa",
+      "hidden": false
+    },
+    {
+      "type": "page",
+      "id": "kripto",
+      "title": "Kripto",
+      "page_file": "pages/8_Kripto.py",
+      "parent_id": "borsa",
+      "hidden": false
+    },
+    {
+      "type": "page",
+      "id": "firsat_taramasi",
+      "title": "Fırsat Taraması",
+      "page_file": "pages/9_Firsat_Taramasi.py",
+      "parent_id": "borsa",
+      "hidden": false
+    }
+  ]
+}
