@@ -1,0 +1,75 @@
+ROUTER ISIMLERI BULMA - ACIKLAMA
+==================================
+
+NE ISE YARAR
+------------
+Bu klasordeki script, router_listesi.xlsx dosyasindaki IP adreslerine
+Telnet (port 23) ile baglanip, kullanici adi/sifre ile giris yapar ve
+cihazin komut satiri istemini (prompt) okuyarak router adini bulur.
+Bulunan isim ve sonuc durumu ayni Excel dosyasina yazilir.
+
+Ornek: 172.22.65.7 adresindeki cihaza baglanilir, giris yapilir,
+cihazin prompt'u <06.26.606_1005752_ASELSAN_MTAL_RO> seklinde okunur,
+"06.26.606_1005752_ASELSAN_MTAL_RO" Router Adi sutununa yazilir.
+
+DOSYALAR
+--------
+- router_listesi.xlsx   : IP listesi + sonuclar. Ana calisma dosyasi.
+- router_isimleri_bul.py: Ana script. Excel'i okur, Telnet ile baglanir,
+                          sonuclari ayni dosyaya yazar.
+- sablon_olustur.py     : Bos bir Excel sablonu uretir (yeni bir liste
+                          icin sifirdan baslamak istenirse kullanilir).
+- debug_tek_ip.py       : Tek bir IP'nin ham Telnet cikitisini gormek
+                          icin (sorun giderme amacli).
+- tarama_log.txt / tekrar_deneme_log.txt : Gecmis calisma kayitlari.
+
+EXCEL SUTUNLARI
+---------------
+- IP Adresi        : Taranacak cihazin IP'si
+- Kullanici Adi     : Telnet giris kullanici adi
+- Sifre             : Telnet giris sifresi
+- Port (bos=23)     : Telnet portu, bos birakilirsa 23 kullanilir
+- Router Adi        : Script tarafindan doldurulur (bulunan isim)
+- Durum             : Script tarafindan doldurulur (OK / hata aciklamasi)
+
+NASIL CALISTIRILIR
+-------------------
+1) Excel dosyasini KAPALI tutarak asagidaki komutu calistirin:
+   python router_isimleri_bul.py
+
+2) Sadece ilk N satiri test etmek icin:
+   python router_isimleri_bul.py 15
+
+3) Daha once basarisiz olan (OK olmayan) satirlari tekrar denemek icin:
+   python router_isimleri_bul.py --retry-failed
+
+DIKKAT EDILMESI GEREKENLER
+---------------------------
+- Script calisirken Excel dosyasini ACMAYIN. Excel'de acikken script
+  dosyaya yazamaz ve "PermissionError: Permission denied" hatasi alir.
+  Ilerlemeyi Excel yerine tarama_log.txt dosyasindan takip edin.
+- Script her satirdan sonra Excel'i kaydeder, bu yuzden yarida kesilse
+  bile o ana kadarki sonuclar kaybolmaz.
+- "Zaman asimi" durumu genellikle cihazin agda cevap vermedigi
+  (kapali / Telnet portu kapali / erisim yok) anlamina gelir; script
+  tarafinda duzeltilebilecek bir sey degildir.
+- "Giris reddedildi" durumu kullanici adi/sifrenin o cihaz icin yanlis
+  oldugunu gosterir; o satira ozel dogru bilgiyi Excel'e girip
+  --retry-failed ile tekrar denenebilir.
+- Farkli marka/model cihazlarda prompt formati degisebilir (ornegin
+  Huawei/H3C <isim> veya [isim], Cisco tarzi isim> veya isim#). Yeni
+  bir format tespit edilemezse "Router adi (prompt) tespit edilemedi"
+  yazar; boyle durumlarda debug_tek_ip.py ile o IP'nin ham ciktisina
+  bakip script'teki PROMPT_RE regex'i guncellenebilir.
+- Bu script sadece Telnet uzerinden calisir; SSH gerektiren cihazlarda
+  calismaz.
+
+Son calistirma tarihi: 2026-08-26
+Taranan IP sayisi: 862  |  Basarili: 828  |  Erisilemeyen: 34
+
+KLASOR KONUMU
+-------------
+Bu klasor: C:\Users\suley\OneDrive\Desktop\scriptler\router_isimleri_bulma
+Script (router_isimleri_bul.py) Excel dosyasini kendi bulundugu klasorden
+otomatik bulur (sabit yol degil), bu yuzden butun klasor baska bir yere
+tasinsa/kopyalansa bile calismaya devam eder.

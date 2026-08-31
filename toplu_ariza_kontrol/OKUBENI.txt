@@ -1,0 +1,208 @@
+TOPLU ARIZA KONTROL - ACIKLAMA
+================================
+
+NE ISE YARAR
+------------
+Bu klasordeki script, ariza_listesi.xlsx dosyasindaki IP adreslerine
+Telnet (port 23) ile baglanip, "Ariza Kontrol Asamalari.docx" belgesindeki
+adimlari sirayla otomatik uygular:
+
+  1) Telnet ile giris yapilabiliyor mu (ERISIM VAR / ERISIM YOK + hata nedeni)
+  2) "display/show ip interface brief" ile VLAN interface IP'leri okunur.
+     Bu adimda cihazin Huawei mi Cisco mu oldugu OTOMATIK anlasilir; ayrica
+     Huawei'nin eski (GigabitEthernet0/0/1.10 seklinde sub-interface) ve
+     yeni (Vlanif10 seklinde) interface adlandirma bicimlerinin ikisi de
+     desteklenir.
+  3) VLAN 10/11/20/30/40/50/60 interface IP'lerinden 4.2.2.2'ye ping atilir,
+     her VLAN'in interneti ayri ayri VAR/YOK/KISMI olarak raporlanir.
+  4) ARP tablosu okunur (display arp dynamic / show arp), kac cihaz bagli
+     oldugu sayilir (switch/AP/tahta gibi cihazlarin gorulup gorulmedigi).
+  5) Iki ayri sunucu kontrolu (belgede farkli IP'ler oldugu icin ayri ayri
+     yapilir):
+       - WLC (10.201.129.235): VLAN10 (Yonetim/AP) IP'sinden ping atilir
+         -> "AP'ler WLC'ye gidiyor mu?" kontrolu
+       - EBA (10.201.129.233): VLAN11 (Etkilesimli Tahta) IP'sinden ping atilir
+         -> "ET'ler EBA sunucularina gidiyor mu?" kontrolu
+  6) VLAN10'un DHCP pool konfigurasyonunda "option 43" var mi kontrol
+     edilir (AP'lerin WLC'yi bulabilmesi icin gerekli) - VLAN10 HER
+     router'da (eski/yeni) kontrol edilir, sadece "option 43" aranir.
+     "Yeni" router'larda (VLAN1'i olanlarda) ayrica VLAN1 icin de kontrol
+     yapilir - bu router'larda "option 43" VEYA "option 148" aranir
+     (ikisinden biri yeterli). Eski router'larda VLAN1 yoktur, o hucreye
+     otomatik "-" yazilir, sorun sayilmaz.
+  7) ARP tablosunda 192.168.1.1 / 192.168.1.255 IP'si var mi bakilarak
+     Fatih agina disaridan takilmis bir ADSL modem/router olup olmadigi
+     tespit edilir.
+  8) Router'in NAT yapip yapmadigi konfigurasyonun kendisinden kontrol
+     edilir (Huawei: "nat outbound ...", Cisco: "ip nat inside source ...").
+     Onceki surum aninda bos olabilen NAT session tablosuna bakiyordu, bu
+     yanlis alarm veriyordu - artik zaten cekilen config ciktisi
+     kullanildigi icin hem daha guvenilir hem ekstra komut gerektirmiyor.
+  9) VLAN interface'lerinin Physical/Protocol durumu (UP/DOWN) kontrol
+     edilir; DOWN olan bir VLAN, Router-Switch Up-Link kablo sorununa
+     isaret edebilir.
+  10) Router'in donanim/log durumu kontrol edilir (sadece Huawei'de -
+      Cisco'da bu adim atlanir, "N/A" yazilir), iki komut birlestirilir:
+        - "display device": kart durumu (SRU dahil). Herhangi bir kart
+          "Normal" degilse (orn. "Chip Fault") CIDDI ariza sayilir.
+        - "display alarm active": TUM aktif sistem alarmlari (BPDU,
+          optik sinyal, sicaklik, guc vb.). SADECE Major/Critical seviyesi
+          rapor edilir; Warning/Minor seviyeler bilerek HIC GOSTERILMEZ
+          (orn. kullanilmayan bir portta dusuk optik sinyal gibi onemsiz
+          durumlar kafa karistirdigi icin tamamen sessize alindi).
+  11) Hicbir VLAN'in interneti yoksa, router'in gercek (WAN/NAT) IP'si
+      uzerinden (genelde LoopBack0, 95.1.x.x formatinda) ek bir "genel
+      internet cikisi" testi yapilir. Bu, arizanin router/MPLS
+      seviyesinde mi (reel IP de pingsizse) yoksa switch/VLAN/DHCP
+      seviyesinde mi (reel IP pinglenebiliyorsa) oldugunu ayirt eder.
+
+KAPSAM DISI (bilerek dahil edilmedi)
+--------------------------------------
+Resmi yonergede (07062017-Arıza Yönerge.pdf) anlatilan Switch/AP/WLC
+seviyesindeki adimlar (ayri SW'e telnet, WLC'ye SSH, LLDP komsuluk takibi
+vb.) bu script'e DAHIL EDILMEDI - script sadece Router'a Telnet atiyor,
+Router'dan sonraki cihazlara (switch, access point, WLC) ayrica
+baglanmiyor. Bu adimlar saha/elle mudahale gerektirir.
+
+DOSYALAR
+--------
+- ariza_listesi.xlsx : IP listesi + sonuclar. Ana calisma dosyasi.
+- ariza_kontrol.py   : Ana script. Excel'i okur, Telnet ile baglanir,
+                       tum kontrolleri yapar, sonuclari ayni dosyaya yazar.
+- sablon_olustur.py  : Bos bir Excel sablonu uretir (sifirdan baslamak
+                       icin; DIKKAT: calistirilirsa mevcut ariza_listesi.xlsx
+                       icindeki VERILER SILINIR, sadece bos sablon kalir).
+- "Ariza Kontrol Asamalari.docx", "yeni_roter.docx",
+  "07062017-Arıza Yönerge.pdf" : Referans belgeler, script'in mantigi
+  bunlara dayanir.
+
+VARSAYILAN GIRIS BILGISI
+-------------------------
+Tum routerlarda ayni kullanici adi/sifre kullanildigi icin script'in
+icinde varsayilan olarak tanimli (VARSAYILAN_KULLANICI_ADI / VARSAYILAN_SIFRE,
+ariza_kontrol.py dosyasinin basinda). Excel'de "Kullanici Adi"/"Sifre"
+hucreleri BOS birakilirsa bu varsayilan bilgiler kullanilir - yani normal
+kullanimda sadece "IP Adresi" sutununu doldurmak yeterlidir. Okul adi da
+elle girilmesine gerek kalmadan, cihaza baglanildiktan sonra prompt'undan
+(hostname) otomatik okunup "Okul / Aciklama" sutununa yazilir (hucre zaten
+doluysa dokunulmaz).
+
+EXCEL SUTUNLARI
+---------------
+- Sorun / Genel Durum (en basta, A sutunu) : Tum kontrollere bakip script'in
+  urettigi ozet. Hicbir sorun yoksa "Sorun yok" yazar; sorun varsa hangi
+  VLAN'in interneti olmadigi / ARP'ta cihaz gorunmedigi / EBA erisimi
+  olmadigi gibi bulgulari tek satirda listeler (birden fazla sorun ";" ile
+  ayrilir). Erisim saglanamadiysa direkt erisim hatasini yazar.
+- IP Adresi                         : Kontrol edilecek cihazin IP'si (zorunlu)
+- Okul / Aciklama                    : Bos birakilabilir, script otomatik doldurur
+- Kullanici Adi / Sifre               : Bos birakilabilir, varsayilan kullanilir
+- Port (bos=23)                      : Telnet portu, bos ise 23 kullanilir
+- Erisim Durumu                      : ERISIM VAR / ERISIM YOK: <sebep>
+- Marka                              : HUAWEI / CISCO (otomatik tespit)
+- VLAN10..VLAN60 Internet sutunlari  : Her VLAN icin VAR / YOK / KISMI(%x) /
+                                        IP BULUNAMADI
+- VLAN1 Internet (Yeni Router)        : Sadece "yeni" Huawei routerlarda
+                                        (Vlanif1 seklinde VLAN1 interface'i
+                                        olanlarda) test edilir. Eski
+                                        router/Cisco cihazlarda VLAN1 tanimli
+                                        olmadigi icin hucreye sade "-" yazilir
+                                        ve "Sorun / Genel Durum" ozetinde
+                                        sorun sayilmaz.
+- ARP Cihaz Sayisi                   : ARP tablosundaki dinamik giris sayisi
+- WLC Erisimi                        : VLAN10 (Yonetim/AP) uzerinden WLC
+                                        (10.201.129.235) erisimi
+- EBA Erisimi                        : VLAN11 (Tahta) uzerinden EBA
+                                        (10.201.129.233) erisimi
+- VLAN1/VLAN10 Option43 (Kablosuz)   : DHCP pool'da option var mi (bkz.
+                                        yukarida madde 6 - VLAN10'da sadece
+                                        43, VLAN1'de 43 veya 148 aranir).
+                                        VLAN1 icin eski router'larda
+                                        otomatik "-"
+- Reel IP Internet Cikisi            : SADECE hicbir VLAN'in interneti
+                                        yoksa doldurulur (aksi halde "-").
+                                        Router'in gercek IP'si (LoopBack0)
+                                        uzerinden 4.2.2.2'ye ping sonucu +
+                                        IP'nin kendisi parantez icinde
+                                        gosterilir (orn. "VAR (95.1.14.16)")
+- Harici ADSL Modem                  : ARP'ta 192.168.1.1/255 varsa "VAR"
+- NAT Calisiyor mu                   : Konfigurasyonda NAT tanimli mi
+                                        ("nat outbound" / "ip nat inside
+                                        source" araniyor)
+- Interface Durumu (DOWN olanlar)    : Hangi VLAN'larin interface'i DOWN
+                                        (Router-Switch baglanti sorunu olabilir),
+                                        hepsi UP ise "-"
+- Donanim/Log Alarmi (SRU-BPDU vb.)  : "display device" (kart durumu) +
+                                        "display alarm active" (SADECE
+                                        Major/Critical seviye alarmlar,
+                                        Warning/Minor hic gosterilmez)
+                                        birlikte degerlendirilir. Ciddi
+                                        bir sey varsa "VAR - <seviye>
+                                        (ARIZALI OLABILIR)"; yoksa "YOK";
+                                        Cisco'da "N/A"
+- Not                                : Ek aciklamalar (orn. VLAN IP'leri hic
+                                        okunamadiysa)
+
+NASIL CALISTIRILIR
+-------------------
+1) Excel dosyasini KAPALI tutarak asagidaki komutu calistirin:
+   python ariza_kontrol.py
+
+2) Sadece ilk N satiri test etmek icin:
+   python ariza_kontrol.py 15
+
+3) Daha once "ERISIM VAR" olmayan (basarisiz) satirlari tekrar denemek icin:
+   python ariza_kontrol.py --retry-failed
+
+PERFORMANS (PARALEL CALISMA)
+------------------------------
+Script IP'leri artik TEK TEK degil, ayni anda 8 IP'ye birden baglanarak
+(paralel) isler - satir sayisi arttikca bu fark cok daha belirgin
+oluyor. Ayrica her ping komutu 5 paket yerine 2 paket gonderiyor (VAR/YOK
+sonucunu degistirmiyor, sadece KISMI sonuclarin yuzdesi daha kaba oluyor,
+orn. %50 = 1/2 paket). Bu iki degisiklik birlikte, onceki surume gore
+satir basina harcanan sureyi onemli olcude kisaltti (test: 3 satir/3
+dakikadan, 4 satir/~1 dakikaya). Es zamanli baglanti sayisini degistirmek
+icin ariza_kontrol.py'de MAX_WORKERS degiskeni guncellenebilir (varsayilan 8).
+
+TEKRAR EDEN IP'LER
+-------------------
+Script her calistirmada, IP listesini islemeye baslamadan once ayni IP'nin
+birden fazla satirda olup olmadigini kontrol eder. Bir IP birden fazla kez
+geciyorsa: ilk gorulen satir oldugu gibi kalir, sonraki tekrarlar KIRMIZI
+renge boyanip "TEKRAR EDEN IP" notu ile isaretlenir ve listenin EN ALTINA
+tasinir. Bu satirlar test edilmez (zaten ayni IP baska bir satirda test
+edilir/edildi).
+
+DIKKAT EDILMESI GEREKENLER
+---------------------------
+- Script calisirken Excel dosyasini ACMAYIN. Excel'de acikken script
+  dosyaya yazamaz ve "PermissionError: Permission denied" hatasi alir.
+- Script her IP sonuclandiginda (paralel calistigi icin sira Excel'deki
+  satir sirasiyla ayni olmayabilir) Excel'i kaydeder, yarida kesilse bile
+  o ana kadarki sonuclar kaybolmaz.
+- "ERISIM YOK: Zaman asimi" -> cihaz agda cevap vermiyor (kapali/erisimsiz).
+- "ERISIM YOK: Kullanici adi/sifre reddedildi" -> giris bilgisi yanlis.
+- Cisco komut seti (ping ... source ..., show ip interface brief, show arp)
+  gercek bir Cisco cihazda test edilip dogrulandi (28.08.2026).
+- "NAT Calisiyor mu" konfigurasyonda "nat outbound"/"ip nat inside source"
+  arar; router farkli bir NAT sozdizimi kullaniyorsa (nadir) yanlislikla
+  "YOK" gorunebilir - gercek bir arizada manuel teyit etmek gerekir.
+- WLC/EBA sunucu IP'leri ve DHCP option numaralari bolgeye/faza gore
+  degisebilir (yonergede oyle belirtiliyor) - script'teki sabit degerler
+  (WLC_IP, EBA_IP, "option 43"/"148") genel bir varsayimdir, kesin degil.
+- VLAN sutunu "IP BULUNAMADI" gosteriyorsa, o VLAN o cihazda tanimli
+  olmayabilir (normal) ya da "ip interface brief" ciktisi farkli bir format
+  kullaniyor olabilir (yeni bir cihaz turu / marka).
+- Bu script sadece Telnet uzerinden calisir; SSH gerektiren cihazlarda
+  calismaz.
+- Belgedeki VLAN numaralari: 1=Yeni router (bkz. VLAN1 aciklamasi),
+  10=Yonetim/AP, 11=Etkilesimli Tahta, 20=Idare, 30=Ogretmen,
+  40=BT Sinifi, 50=Ogrenci Tablet(Pasif), 60=Aktivasyon.
+
+CIFT TIKLAYARAK CALISTIRMA
+----------------------------
+- ARIZA_KONTROL_CALISTIR.bat  : normal taramayi baslatir
+- BASARISIZLARI_TEKRAR_DENE.bat : sadece basarisiz/erisilemeyen satirlari tekrar dener
+Bu dosyalara Dosya Gezgininde cift tiklaman yeterli; bir komut penceresi
+acilir, script calisir, bitince bir tusa basana kadar bekler.
