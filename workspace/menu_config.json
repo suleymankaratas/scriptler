@@ -15,6 +15,14 @@
       "hidden": false
     },
     {
+      "type": "page",
+      "id": "toplu_ariza_kontrol",
+      "title": "Toplu Arıza Kontrol",
+      "page_file": "pages/3_Toplu_Ariza_Kontrol.py",
+      "parent_id": "kurum-i-leri",
+      "hidden": false
+    },
+    {
       "type": "folder",
       "id": "borsa",
       "title": "borsa",
